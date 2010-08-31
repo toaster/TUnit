@@ -1,0 +1,8 @@
+from buildSupport import *
+
+
+env = Environment()
+initEnv(env, appName = 'test')
+dependsOnLibs(env, ['TFoundation', 'TUnit'])
+
+buildTest(env, mFiles(env))

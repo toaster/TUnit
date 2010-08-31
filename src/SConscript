@@ -1,0 +1,9 @@
+from buildSupport import *
+
+
+env = Environment()
+initEnv(env, 'TUnit')
+dependsOnLibs(env, ['TFoundation'])
+env.Append(LIBS = ['m'])
+
+buildLib(env, mFiles(env), False)
