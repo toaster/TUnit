@@ -158,8 +158,9 @@ static inline void checkForResponsibility(id self, SEL sel)
 {
     _TMockData *data = getData(self);
     if (class_get_instance_method(data->superClass, sel) == METHOD_NULL) {
-        @throw [TTestException exceptionWithFormat: @"<%@ %s %p> cannot mock invalid message '%@'",
-                [data->superClass className], object_is_instance(self) ? "instance" : "class", self,
+        @throw [TTestException exceptionWithFormat: @"<%s %s %p> cannot mock invalid message '%@'",
+                object_get_class_name(data->superClass),
+                object_is_instance(self) ? "instance" : "class", self,
                 [TUtils stringFromSelector: sel]];
     }
 }

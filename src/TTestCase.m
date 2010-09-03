@@ -6,6 +6,8 @@
 
 #pragma .h #include <TFoundation/TFoundation.h>
 
+#pragma .h #include <sys/resource.h>
+
 #pragma .h @class TString;
 
 #include <objc/objc.h>
@@ -17,72 +19,148 @@
 #include "TUnit/TObject.Mock.h"
 
 
-#pragma .h #define ASSERTEQUALSINT(int1, int2) [self _assertInt: int1 equalsInt: int2\
-#pragma .h         file: __FILE__ line: __LINE__]
+#pragma .h typedef void(TUnitCallBack)();
+#pragma .h extern TUnitCallBack *tUnitBeforeSetUp;
 
-#pragma .h #define ASSERTISGREATERTHANINT(int1, int2) [self _assertInt: int1 isGreaterThan: int2\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTISLESSTHANINT(int1, int2) [self _assertInt: int1 isLessThan: int2\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTEQUALS(obj1, obj2) [self _assert: obj1 equals: obj2\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTIDENTICAL(obj1, obj2) [self _assert: obj1 isIdenticalTo: obj2\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERT(x) [self _assert: @#x isTrue: x shouldBeFalse: NO\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTFALSE(x) [self _assert: @#x isTrue: x shouldBeFalse: YES\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTKINDOF(expectedClass, obj) [self _assert: obj isKindOf: expectedClass\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTLISTCONTENTSEQUAL(expected, got) [self _assertList: got\
-#pragma .h         containsEqualElementsAs: expected file: __FILE__ line: __LINE__]
-
-#pragma .h #define ASSERTSUBSTRING(expected, got) [self _assert: got hasSubstring: expected\
-#pragma .h         file: __FILE__ line: __LINE__]
-
-// FIXME Zeitmessung bauen
-/*#pragma .h #define ASSERTISFASTERTHAN(fast, slow, howMany) {\
-/#pragma .h     long long __fastTime__ = [OSTime currentTimeMillis];\
-/#pragma .h \
-/#pragma .h     for (int __i__ = 0; __i__ < howMany; ++__i__) {\
-/#pragma .h         fast;\
-/#pragma .h     }\
-/#pragma .h     __fastTime__ = [OSTime currentTimeMillis] - __fastTime__;\
-/#pragma .h \
-/#pragma .h     long long __slowTime__ = [OSTime currentTimeMillis];\
-/#pragma .h \
-/#pragma .h     for (int __i__ = 0; __i__ < howMany; ++__i__) {\
-/#pragma .h         slow;\
-/#pragma .h     }\
-/#pragma .h     __slowTime__ = [OSTime currentTimeMillis] - __slowTime__;\
-/#pragma .h     ASSERTISLESSTHANINT(__fastTime__, __slowTime__);\
-/#pragma .h }*/
+TUnitCallBack *tUnitBeforeSetUp = NULL;
 
 
-#pragma .h #define FAIL(x) {\
-#pragma .h     BOOL failed = NO;\
+#pragma .h #define _ASSERT(sel) [self sel file: __FILE__ line: __LINE__]; [self clearHint];
+
+#pragma .h #define ASSERTEQUALSINT(int1, int2) _ASSERT(_assertInt: int1 equalsInt: int2)
+
+#pragma .h #define ASSERTISGREATERTHANINT(int1, int2) _ASSERT(_assertInt: int2 isGreaterThan: int1)
+
+#pragma .h #define ASSERTISLESSTHANINT(int1, int2) _ASSERT(_assertInt: int2 isLessThan: int1)
+
+#pragma .h #define ASSERTEQUALS(obj1, obj2) _ASSERT(_assert: obj1 equals: obj2)
+
+#pragma .h #define ASSERTIDENTICAL(obj1, obj2) _ASSERT(_assert: obj1 isIdenticalTo: obj2)
+
+#pragma .h #define ASSERT(x) _ASSERT(_assert: @#x isTrue: x shouldBeFalse: NO)
+
+#pragma .h #define ASSERTFALSE(x) _ASSERT(_assert: @#x isTrue: x shouldBeFalse: YES)
+
+#pragma .h #define ASSERTNIL(x) ASSERT((x) == nil);
+
+#pragma .h #define ASSERTNOTNIL(x) ASSERT((x) != nil);
+
+#pragma .h #define ASSERTKINDOF(expectedClass, obj) _ASSERT(_assert: obj isKindOf: expectedClass)
+
+#pragma .h #define ASSERTLISTCONTENTSEQUAL(expected, got)\
+#pragma .h         _ASSERT(_assertList: got containsEqualElementsAs: expected)
+
+#pragma .h #define ASSERTLISTCONTAINS(expected, got)\
+#pragma .h         _ASSERT(_assertList: got containsElementsFrom: expected)
+
+#pragma .h #define ASSERTSUBSTRING(expected, got) _ASSERT(_assert: got hasSubstring: expected)
+
+#pragma .h #define ASSERTMATCHES(expected, result) _ASSERT(_assert: result matches: expected)
+
+#pragma .h #define ASSERTISFASTERTHAN(fast, slow, howMany) {\
+#pragma .h     long long __fastTime__ = [TTime currentTimeMillis];\
+#pragma .h \
+#pragma .h     for (int __i__ = 0; __i__ < howMany; ++__i__) {\
+#pragma .h         fast;\
+#pragma .h     }\
+#pragma .h     __fastTime__ = [TTime currentTimeMillis] - __fastTime__;\
+#pragma .h \
+#pragma .h     long long __slowTime__ = [TTime currentTimeMillis];\
+#pragma .h \
+#pragma .h     for (int __i__ = 0; __i__ < howMany; ++__i__) {\
+#pragma .h         slow;\
+#pragma .h     }\
+#pragma .h     __slowTime__ = [TTime currentTimeMillis] - __slowTime__;\
+#pragma .h     ASSERTISLESSTHANINT(__slowTime__, __fastTime__);\
+#pragma .h }
+
+#pragma .h #define ASSERTISFAST(expectedMaxMilliSeconds, method, howMany) {\
+#pragma .h     long long __expected__ = (long long)expectedMaxMilliSeconds;\
+#pragma .h     struct rusage __usage__;\
+#pragma .h     long long __before__;\
+#pragma .h     long long __after__;\
+#pragma .h     getrusage(RUSAGE_SELF, &__usage__);\
+#pragma .h     __before__ = (long long)__usage__.ru_utime.tv_sec * 1000000 +\
+#pragma .h             (long long)__usage__.ru_utime.tv_usec;\
+#pragma .h \
+#pragma .h     for (int __i__ = 0; __i__ < howMany; ++__i__) {\
+#pragma .h         method;\
+#pragma .h     }\
+#pragma .h     getrusage(RUSAGE_SELF, &__usage__);\
+#pragma .h     __after__ = (long long)__usage__.ru_utime.tv_sec * 1000000 +\
+#pragma .h             (long long)__usage__.ru_utime.tv_usec;\
+#pragma .h \
+#pragma .h     ASSERTISLESSTHANINT(__expected__, (__after__ - __before__) / 1000);\
+#pragma .h }
+
+#pragma .h #define _FAIL(x, eClass, eId, expectedE, code...) {\
+#pragma .h     eClass e = nil;\
+#pragma .h     id unexpectedException = nil;\
 #pragma .h \
 #pragma .h     @try {\
 #pragma .h         x;\
-#pragma .h     } @catch(id e) {\
-#pragma .h         failed = YES;\
+#pragma .h     } @catch(eClass caught) {\
+#pragma .h         e = caught;\
+#pragma .h     } @catch(id u) {\
+#pragma .h         unexpectedException = u;\
 #pragma .h     }\
-#pragma .h     if (!failed) {\
+#pragma .h     if (e == nil && unexpectedException == nil) {\
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
-#pragma .h                 withMessage: @"Assertion " @#x @" did not fail"];\
+#pragma .h                 withMessage: @#x @" did not fail"];\
+#pragma .h     } else if (expectedE != nil && ![expectedE isEqualTo: e]) {\
+#pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
+#pragma .h                 withFormat: @#x @" failed with unexpected exception %@ instead of %@",\
+#pragma .h                 e, expectedE];\
+#pragma .h     } else if (unexpectedException != nil) {\
+#pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
+#pragma .h                 withFormat: @#x @" failed with unexpected exception %@ instead of %@",\
+#pragma .h                 unexpectedException, @#eClass];\
+#pragma .h     } else if (eId != 0 && eId != [(id)e id]) {\
+#pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
+#pragma .h                 withFormat: @#x@" failed with unexpected exception ID %d instead of %d",\
+#pragma .h                 [(id)e id], eId];\
 #pragma .h     }\
+#pragma .h     code;\
 #pragma .h }
+
+//#pragma .h #define FAIL(x) _FAIL(x, id, 0, nil,)
+#pragma .h #define FIXME_FAIL(x) _FAIL(x, id, 0, nil,)
+
+#pragma .h #define FAIL_WITH(exceptionClass, x, code...) _FAIL(x, exceptionClass *, 0, nil, code)
+
+#pragma .h #define FAIL_WITH_CLASS(exceptionClass, x)\
+#pragma .h         _FAIL(x, exceptionClass *, 0, nil,)
+
+#pragma .h #define FAIL_WITH_CLASS_AND_ID(exceptionClass, exceptionId, x)\
+#pragma .h         _FAIL(x, exceptionClass *, exceptionId, nil,)
+
+#pragma .h #define FAIL_WITH_EQUAL(expectedException, x) _FAIL(x, id, 0, expectedException,)
 
 
 @implementation TTestCase:TObject
 {
+    TString *_hint;
+}
+
+
+- (void)dealloc
+{
+    [_hint release];
+    [super dealloc];
+}
+
+
+- (TString *)assertionMessage: (TString *)format, ...
+{
+    va_list args;
+    va_start(args, format);
+    NSString *reason = [TString stringWithFormat: format andArglist: &args];
+    va_end(args);
+    TString *message = [TString stringWithFormat: @"Assertion failed: %@", reason];
+    if (_hint != nil) {
+        message = [TString stringWithFormat: @"%@ (%@)", message, _hint];
+    }
+    return message;
 }
 
 
@@ -154,7 +232,7 @@
 - (void)_assertInt: (int)int1 equalsInt: (int)int2 file: (const char *)file line: (int)line
 {
     if (int1 != int2) {
-        @throw [TTestException exceptionAt: file : line withFormat: 
+        @throw [TTestException exceptionAt: file : line withFormat:
                 @"Assertion failed: %d is not equal %d", int1, int2];
     }
 }
@@ -184,7 +262,7 @@
         file: (const char *)file line: (int)line
 {
     if (obj1 != obj2) {
-        @throw [TTestException exceptionAt: file : line withFormat: 
+        @throw [TTestException exceptionAt: file : line withFormat:
                 @"Assertion failed: %@(%p) is not identical to %@(%p)",
                 obj1, obj1, obj2, obj2];
     }
@@ -214,13 +292,31 @@
 }
 
 
-- (void)_assertList: (TArray *)got containsEqualElementsAs: (TArray *)expected
+- (void)_assertList: (NSArray *)got containsElementsFrom: (NSArray *)expected
         file: (const char *)file line: (int)line
 {
+    [self _assertList: got containsElementsFrom: expected failOnUnexpected: NO
+            file: file line: line];
+}
+
+
+- (void)_assertList: (NSArray *)got containsEqualElementsAs: (NSArray *)expected
+        file: (const char *)file line: (int)line
+{
+    [self _assertList: got containsElementsFrom: expected failOnUnexpected: YES
+            file: file line: line];
+}
+
+
+- (void)_assertList: (TArray *)got containsElementsFrom: (TArray *)expected
+        failOnUnexpected: (BOOL)failOnUnexpected file: (const char *)file line: (int)line
+{
     id unexpected = [TMutableArray array];
-    for (id <TIterator> i = [got iterator]; [i hasCurrent]; [i next]) {
-        if (![expected containsObject: [i current]]) {
-            [unexpected addObject: [i current]];
+    if (failOnUnexpected) {
+        for (id <TIterator> i = [got iterator]; [i hasCurrent]; [i next]) {
+            if (![expected containsObject: [i current]]) {
+                [unexpected addObject: [i current]];
+            }
         }
     }
     id missed = [TMutableArray array];
@@ -251,12 +347,38 @@
 }
 
 
-- (void)prepare
+- (void)_assert: (TString *)value matches: (TString *)expected
+        file: (const char *)file line: (int)line
+{
+    if (![value matches: expected]) {
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"value %@ does not match expression %@.", value, expected]];
+    }
+}
+
+
+- (void)setHint: (NSString *)hint
+{
+    if (_hint != hint) {
+        [_hint release];
+        _hint = [hint retain];
+    }
+}
+
+
+- (void)clearHint
+{
+    [_hint release];
+    _hint = nil;
+}
+
+
+- (void)setUp
 {
 }
 
 
-- (void)cleanup
+- (void)tearDown
 {
 }
 
@@ -275,26 +397,40 @@
 }
 
 
-- (int)run
+- (void)printRunning
 {
-    int result = 0;
+    [TUserIO print: @"objc."];
+    [TUserIO print: [self className]];
+    [TUserIO print: @" "];
+}
+
+
+- (int)run: (NSString *)methodFilter
+{
+    int failures = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
     struct objc_method_list *list = [self class]->methods;
 
+    [self printRunning];
     while (list != NULL) {
-        int i;
-
-        for (i = 0; list->method_count > i; ++i) {
+        for (int i = list->method_count; i-- > 0;) {
+            TAutoreleasePool *testPool = [[TAutoreleasePool alloc] init];
             SEL sel = list->method_list[i].method_name;
             TString *method = [TUtils stringFromSelector: sel];
 
-            if ([method hasPrefix: @"test"]) {
-                [TUserIO println: @"  Running %@ ...", method];
+            if (([method hasPrefix: @"test"] || [method hasPrefix: @"itShould"]) &&
+                    (nil == methodFilter || [method matches: methodFilter]) &&
+                    ![method matches: @"Broken$"]) {
                 TStack *exceptions = [TStack stack];
                 @try {
+                    [self clearHint];
                     [TMockMessage cleanupOrderedMessages];
-                    [self prepare];
+                    if (tUnitBeforeSetUp != NULL) {
+                        tUnitBeforeSetUp();
+                    }
+                    [self setUp];
                     @try {
+                        [TUserIO print: @"."];
                         [self perform: sel];
                     } @catch(id e) {
                         [exceptions push: e];
@@ -304,26 +440,28 @@
                         } @catch(id e) {
                             [exceptions push: e];
                         } @finally {
-                            [self cleanup];
+                            [self tearDown];
                         }
                     }
                 } @catch(id e) {
                     [exceptions push: e];
                 }
                 if ([exceptions containsData]) {
-                    ++result;
-                    [TUserIO eprintln: @"error: Test %@:%@ failed - %@",
+                    ++failures;
+                    [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
                             [self className], method, [exceptions pop]];
                     while ([exceptions containsData]) {
                         [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
                     }
                 }
             }
+            [testPool release];
         }
         list = list->method_next;
     }
+    [TUserIO println: failures == 0 ? @" OK" : @" FAILED"];
     [pool release];
-    return result;
+    return failures;
 }
 
 
@@ -336,23 +474,29 @@ int objcmain(int argc, char *argv[])
     void *classIterator = NULL;
     Class class;
     Class testCaseClass = [TTestCase class];
-    TString *expectedClass = nil;
-    if (argc == 2) {
-        expectedClass = [TString stringWithCString: argv[1]];
+    TString *classFilter = nil;
+    if (argc > 1) {
+        classFilter = [TString stringWithCString: argv[1]];
+    }
+    TString *methodFilter = nil;
+    if (argc > 2) {
+        methodFilter = [TString stringWithCString: argv[2]];
+    }
+    if ([classFilter hasSuffix: @"Test"]) {
+        classFilter = [classFilter substringToIndex: [classFilter length] - 4];
     }
 
     while ((class = objc_next_class(&classIterator)) != Nil) {
-        [class initialize];
-        if (class_get_class_method(class->class_pointer,
-                @selector(isKindOf:)) && class != testCaseClass &&
-                [class isKindOf: testCaseClass] &&
-                (expectedClass == nil || [expectedClass isEqual: [class className]])) {
-            TTestCase *test = [[class alloc] init];
-
-            [TUserIO println: @"Testing %@ ...", [class className]];
-            result += [test run];
-            [TUserIO println: @"Finished %@", [class className]];
-            [test release];
+        if (class_get_class_method(class->class_pointer, @selector(isKindOf:)) &&
+                [class isKindOf: testCaseClass] && ![[class className] matches: @"TestCase$"] &&
+                (classFilter == nil || [[class className] matches: classFilter])) {
+            TTestCase *test = nil;
+            @try {
+                test = [[class alloc] init];
+                result += [test run: methodFilter];
+            } @finally {
+                [test release];
+            }
         }
     }
     return result;

@@ -22,7 +22,7 @@
 #pragma .h     struct _TMockList *next;
 #pragma .h } TMockList;
 
-#pragma .h #define verify verifyAt: __FILE__ : __LINE__
+#pragma .h #define verifyMocks verifyMocksAt: __FILE__ : __LINE__
 
 
 @implementation TMockController:TObject
@@ -418,7 +418,7 @@ RESULT_ACCESSOR(BOOL, Bool, Byte, byte);
 }
 
 
-- (void)verifyAt: (const char *)file : (int)line
+- (void)verifyMocksAt: (const char *)file : (int)line
 {
     TMutableArray *pendingMessages = [TMutableArray array];
 
