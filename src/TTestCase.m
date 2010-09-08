@@ -115,10 +115,10 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
 #pragma .h                 withFormat: @#x @" failed with unexpected exception %@ instead of %@",\
 #pragma .h                 unexpectedException, @#eClass];\
-#pragma .h     } else if (eId != 0 && eId != [(id)e id]) {\
+#pragma .h     } else if (eId != 0 && eId != [(id)e errorId]) {\
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
 #pragma .h                 withFormat: @#x@" failed with unexpected exception ID %d instead of %d",\
-#pragma .h                 [(id)e id], eId];\
+#pragma .h                 [(id)e errorId], eId];\
 #pragma .h     }\
 #pragma .h     code;\
 #pragma .h }
