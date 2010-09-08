@@ -93,7 +93,7 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h     ASSERTISLESSTHANINT(__expected__, (__after__ - __before__) / 1000);\
 #pragma .h }
 
-#pragma .h #define _FAIL(x, eClass, eId, expectedE, code...) {\
+#pragma .h #define _FAIL(eClass, eId, expectedE, x, code...) {\
 #pragma .h     eClass e = nil;\
 #pragma .h     id unexpectedException = nil;\
 #pragma .h \
@@ -123,18 +123,18 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h     code;\
 #pragma .h }
 
-//#pragma .h #define FAIL(x) _FAIL(x, id, 0, nil,)
-#pragma .h #define FIXME_FAIL(x) _FAIL(x, id, 0, nil,)
 
-#pragma .h #define FAIL_WITH(exceptionClass, x, code...) _FAIL(x, exceptionClass *, 0, nil, code)
+//#pragma .h #define FAIL(x...) _FAIL(id, 0, nil, x)
+#pragma .h #define FIXME_FAIL(x...) _FAIL(id, 0, nil, x)
 
-#pragma .h #define FAIL_WITH_CLASS(exceptionClass, x)\
-#pragma .h         _FAIL(x, exceptionClass *, 0, nil,)
+#pragma .h #define FAIL_WITH_CLASS(exceptionClass, x...)\
+#pragma .h         _FAIL(exceptionClass *, 0, nil, x)
 
-#pragma .h #define FAIL_WITH_CLASS_AND_ID(exceptionClass, exceptionId, x)\
-#pragma .h         _FAIL(x, exceptionClass *, exceptionId, nil,)
+#pragma .h #define FAIL_WITH_CLASS_AND_ID(exceptionClass, exceptionId, x...)\
+#pragma .h         _FAIL(exceptionClass *, exceptionId, nil, x)
 
-#pragma .h #define FAIL_WITH_EQUAL(expectedException, x) _FAIL(x, id, 0, expectedException,)
+#pragma .h #define FAIL_WITH_EQUAL(expectedException, x...)\
+#pragma .h         _FAIL(id, 0, expectedException, x)
 
 
 @implementation TTestCase:TObject
