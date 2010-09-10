@@ -137,6 +137,11 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h         _FAIL(id, 0, expectedException, x)
 
 
+static TString *__baseDir = nil;
+static TString *__dataDir = nil;
+static TString *__package = nil;
+
+
 @implementation TTestCase:TObject
 {
     TString *_hint;
@@ -400,6 +405,10 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 - (void)printRunning
 {
     [TUserIO print: @"objc."];
+    if ([__package containsData]) {
+        [TUserIO print: __package];
+        [TUserIO print: @"."];
+    }
     [TUserIO print: [self className]];
     [TUserIO print: @" "];
 }
@@ -465,6 +474,36 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 }
 
 
++ (TString *)testDataDir
+{
+    TString *dir = [self objectForClassKey: @"TEST_DATA_DIR"];
+    if (dir == nil) {
+        dir = [TFile stringByAppendingPath: [self className] to: __dataDir];
+        [self setObject: dir forClassKey: @"TEST_DATA_DIR"];
+        [TFile makePath: dir];
+    }
+    return dir;
+}
+
+
+- (TString *)testDataDir
+{
+    return [[self class] testDataDir];
+}
+
+
++ (TString *)testBaseDir
+{
+    return __baseDir;
+}
+
+
+- (TString *)testBaseDir
+{
+    return [[self class] testBaseDir];
+}
+
+
 @end
 
 
@@ -474,13 +513,19 @@ int objcmain(int argc, char *argv[])
     void *classIterator = NULL;
     Class class;
     Class testCaseClass = [TTestCase class];
+    if (argc < 4) {
+        @throw [TTestException exceptionWithMessage: @"Need test base dir, data dir and package"];
+    }
+    __baseDir = [[TString stringWithCString: argv[1]] retain];
+    __dataDir = [[TString stringWithCString: argv[2]] retain];
+    __package = [[TString stringWithCString: argv[3]] retain];
     TString *classFilter = nil;
-    if (argc > 1) {
-        classFilter = [TString stringWithCString: argv[1]];
+    if (argc > 4) {
+        classFilter = [TString stringWithCString: argv[4]];
     }
     TString *methodFilter = nil;
-    if (argc > 2) {
-        methodFilter = [TString stringWithCString: argv[2]];
+    if (argc > 5) {
+        methodFilter = [TString stringWithCString: argv[5]];
     }
     if ([classFilter hasSuffix: @"Test"]) {
         classFilter = [classFilter substringToIndex: [classFilter length] - 4];
