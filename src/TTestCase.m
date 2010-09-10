@@ -29,6 +29,8 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 
 #pragma .h #define ASSERTEQUALSINT(int1, int2) _ASSERT(_assertInt: int1 equalsInt: int2)
 
+#pragma .h #define ASSERTEQUALSUINT(int1, int2) _ASSERT(_assertUInt: int1 equalsUInt: int2)
+
 #pragma .h #define ASSERTISGREATERTHANINT(int1, int2) _ASSERT(_assertInt: int2 isGreaterThan: int1)
 
 #pragma .h #define ASSERTISLESSTHANINT(int1, int2) _ASSERT(_assertInt: int2 isLessThan: int1)
@@ -176,9 +178,8 @@ static TString *__package = nil;
         if ([obj1 isKindOf: [TDictionary class]] && [obj2 isKindOf: [TDictionary class]]) {
             msg = [self _dictDiff: obj1 : obj2];
         }
-        @throw [TTestException exceptionAt: file : line
-                withFormat: @"Assertion failed: %@ is not equal %@%s%@",
-                obj1, obj2, msg != nil ? ":\n" : "", msg];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%@ is not equal %@%s%@", obj1, obj2, msg != nil ? ":\n" : "", msg]];
     }
 }
 
@@ -237,8 +238,18 @@ static TString *__package = nil;
 - (void)_assertInt: (int)int1 equalsInt: (int)int2 file: (const char *)file line: (int)line
 {
     if (int1 != int2) {
-        @throw [TTestException exceptionAt: file : line withFormat:
-                @"Assertion failed: %d is not equal %d", int1, int2];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%d is not equal %d", int1, int2]];
+    }
+}
+
+
+- (void)_assertUInt: (unsigned long)int1 equalsUInt: (unsigned long)int2
+        file: (const char *)file line: (int)line
+{
+    if (int1 != int2) {
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%lu is not equal %lu", int1, int2]];
     }
 }
 
@@ -247,8 +258,8 @@ static TString *__package = nil;
         file: (const char *)file line: (int)line
 {
     if (int1 <= int2) {
-        @throw [TTestException exceptionAt: file : line withFormat:
-                @"%d is not greater than %d", int1, int2];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%d is not greater than %d", int1, int2]];
     }
 }
 
@@ -257,8 +268,8 @@ static TString *__package = nil;
         file: (const char *)file line: (int)line
 {
     if (int1 >= int2) {
-        @throw [TTestException exceptionAt: file : line withFormat:
-                @"%d is not less than %d", int1, int2];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%d is not less than %d", int1, int2]];
     }
 }
 
@@ -267,9 +278,8 @@ static TString *__package = nil;
         file: (const char *)file line: (int)line
 {
     if (obj1 != obj2) {
-        @throw [TTestException exceptionAt: file : line withFormat:
-                @"Assertion failed: %@(%p) is not identical to %@(%p)",
-                obj1, obj1, obj2, obj2];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%@(%p) is not identical to %@(%p)", obj1, obj1, obj2, obj2]];
     }
 }
 
@@ -279,9 +289,8 @@ static TString *__package = nil;
         line: (int)line
 {
     if ((!isTrue && !shouldBeFalse) || (isTrue && shouldBeFalse)) {
-        @throw [TTestException exceptionAt: file : line
-                withFormat: @"Assertion failed: %@ is not %s", expression,
-                shouldBeFalse ? "false" : "true"];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%@ is not %s", expression, shouldBeFalse ? "false" : "true"]];
     }
 }
 
@@ -290,9 +299,9 @@ static TString *__package = nil;
         file: (const char *)file line: (int)line
 {
     if (![obj isKindOf: expectedClass]) {
-        @throw [TTestException exceptionAt: file : line withFormat:
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
                 @"object's class %@ is not kind of expected class %@",
-                [obj className], [expectedClass className]];
+                [obj className], [expectedClass className]]];
     }
 }
 
@@ -331,13 +340,13 @@ static TString *__package = nil;
         }
     }
     if ([unexpected count] > 0 || [missed count] > 0) {
-        @throw [TTestException exceptionAt: file : line withFormat: @"Assertion failed: "
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
                 @"%@ does not contain the same elements as the expected list %@:%s%@%s%@",
                 got, expected,
                 [unexpected count] > 0 ? "\nUnexpected: " : "",
                 [unexpected count] > 0 ? unexpected : nil,
                 [missed count] > 0 ? "\nMissed: " : "",
-                [missed count] > 0 ? missed : nil];
+                [missed count] > 0 ? missed : nil]];
     }
 }
 
@@ -346,8 +355,8 @@ static TString *__package = nil;
 {
     if (obj == nil || string == nil ||
             strstr([[obj stringValue] cString], [string cString]) == NULL) {
-        @throw [TTestException exceptionAt: file : line
-                withFormat: @"Assertion failed: %@ does not have the substring %@", obj, string];
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%@ does not have the substring %@", obj, string]];
     }
 }
 
