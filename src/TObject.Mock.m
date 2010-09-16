@@ -225,9 +225,11 @@ static id replay(id self, SEL sel, ...)
             case _C_UINT:
             case _C_LNG:
             case _C_ULNG:
+            case _C_CONST:
                 result = (id)[msg popDwordResult];
                 break;
             case _C_VOID:
+            case _C_ONEWAY:
                 [msg popVoidResult];
                 break;
             default:
