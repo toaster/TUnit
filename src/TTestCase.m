@@ -528,29 +528,28 @@ int objcmain(int argc, char *argv[])
     __baseDir = [[TString stringWithCString: argv[1]] retain];
     __dataDir = [[TString stringWithCString: argv[2]] retain];
     __package = [[TString stringWithCString: argv[3]] retain];
-    TString *classFilter = nil;
-    if (argc > 4) {
-        classFilter = [TString stringWithCString: argv[4]];
-    }
-    TString *methodFilter = nil;
-    if (argc > 5) {
-        methodFilter = [TString stringWithCString: argv[5]];
-    }
+    TString *classFilter = (argc > 4) ? [TString stringWithCString: argv[4]] : nil;
+    TString *methodFilter = (argc > 5) ? [TString stringWithCString: argv[5]] : nil;
     if ([classFilter hasSuffix: @"Test"]) {
         classFilter = [classFilter substringToIndex: [classFilter length] - 4];
     }
 
+    TMutableDictionary *testClasses = [TMutableDictionary dictionary];
     while ((class = objc_next_class(&classIterator)) != Nil) {
         if (class_get_class_method(class->class_pointer, @selector(isKindOf:)) &&
                 [class isKindOf: testCaseClass] && ![[class className] matches: @"TestCase$"] &&
                 (classFilter == nil || [[class className] matches: classFilter])) {
-            TTestCase *test = nil;
-            @try {
-                test = [[class alloc] init];
-                result += [test run: methodFilter];
-            } @finally {
-                [test release];
-            }
+            [testClasses setObject: class forKey: [class className]];
+        }
+    }
+    for (id <TIterator> i = [[[testClasses allKeys] sortedArrayUsingSelector:
+            @selector(caseInsensitiveCompare:)] iterator]; [i hasCurrent]; [i next]) {
+        TTestCase *test = nil;
+        @try {
+            test = [[[testClasses objectForKey: [i current]] alloc] init];
+            result += [test run: methodFilter];
+        } @finally {
+            [test release];
         }
     }
     return result;
