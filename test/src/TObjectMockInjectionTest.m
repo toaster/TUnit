@@ -149,7 +149,7 @@
     @try {
         [_obj methodReturningArgument: _obj];
     } @catch (id e) {
-        ASSERTEQUALS(@"anException", e);
+        ASSERTEQUALS(@"anException", [e autorelease]);
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);
@@ -163,7 +163,7 @@
     @try {
         [_obj charMethod];
     } @catch (id e) {
-        ASSERTEQUALS(@"anException", e);
+        ASSERTEQUALS(@"anException", [e autorelease]);
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);
@@ -180,6 +180,7 @@
     @try {
         [o release];
     } @catch (TTestException *e) {
+        [e autorelease];
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);
@@ -215,6 +216,7 @@
     @try {
         verifyAndCleanupMocks();
     } @catch (TTestException *e) {
+        [e autorelease];
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);
@@ -364,7 +366,7 @@
     @try {
         verifyAndCleanupMocks();
     } @catch(TTestException *e) {
-        ASSERTSUBSTRING(expected, [e message]);
+        ASSERTSUBSTRING(expected, [[e autorelease] message]);
     }
 }
 
@@ -377,7 +379,7 @@
         [_obj retain];
         verifyAndCleanupMocks();
     } @catch(TTestException *e) {
-        ASSERTSUBSTRING(expected, [e message]);
+        ASSERTSUBSTRING(expected, [[e autorelease] message]);
     }
 }
 
@@ -390,7 +392,7 @@
 //    @try {
 //        verifyAndCleanupMocks();
 //    } @catch(TTestException *e) {
-//        ASSERTSUBSTRING(expected, [e message]);
+//        ASSERTSUBSTRING(expected, [[e autorelease] message]);
 //    }
 //}
 

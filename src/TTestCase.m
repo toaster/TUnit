@@ -102,7 +102,7 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h     @try {\
 #pragma .h         x;\
 #pragma .h     } @catch(eClass caught) {\
-#pragma .h         e = caught;\
+#pragma .h         e = [caught autorelease];\
 #pragma .h     } @catch(id u) {\
 #pragma .h         unexpectedException = u;\
 #pragma .h     }\
@@ -451,18 +451,18 @@ static TString *__package = nil;
                         [TUserIO print: @"."];
                         [self perform: sel];
                     } @catch(id e) {
-                        [exceptions push: e];
+                        [exceptions push: [e autorelease]];
                     } @finally {
                         @try {
                             verifyAndCleanupMocks();
                         } @catch(id e) {
-                            [exceptions push: e];
+                            [exceptions push: [e autorelease]];
                         } @finally {
                             [self tearDown];
                         }
                     }
                 } @catch(id e) {
-                    [exceptions push: e];
+                    [exceptions push: [e autorelease]];
                 }
                 if ([exceptions containsData]) {
                     ++failures;

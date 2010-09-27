@@ -444,7 +444,7 @@ void verifyAndCleanupMocks()
                 @try {
                     verifyAndCleanupMocksFor(list->key);
                 } @catch (id e) {
-                    [exceptions addObject: e];
+                    [exceptions addObject: [e autorelease]];
                 }
                 list = list->next;
             }
