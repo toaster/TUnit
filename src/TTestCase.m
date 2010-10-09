@@ -179,7 +179,7 @@ static TString *__package = nil;
             msg = [self _dictDiff: obj1 : obj2];
         }
         @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
-                @"%@ is not equal %@%s%@", obj1, obj2, msg != nil ? ":\n" : "", msg]];
+                @"»%@« is not equal »%@«%s%@", obj1, obj2, msg != nil ? ":\n" : "", msg]];
     }
 }
 
