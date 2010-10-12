@@ -412,9 +412,9 @@ RESULT_ACCESSOR(BOOL, Bool, Byte, byte);
 }
 
 
-- skipParameterCheck: (unsigned int)index
+- skipParameterCheck: (unsigned int)idx
 {
-    return [[_messages lastObject] skipParameterCheck: index];
+    return [[_messages lastObject] skipParameterCheck: idx];
 }
 
 

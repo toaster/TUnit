@@ -47,13 +47,13 @@ typedef struct __TMockData {
 } _TMockData;
 
 
-static _TLinkedTable *__lookup(_TCDictionary *dict, void *key, unsigned int *index)
+static _TLinkedTable *__lookup(_TCDictionary *dict, void *key, unsigned int *idx)
 {
     if (dict->tableSize > 0) {
         unsigned int i = (unsigned int)key % dict->tableSize;
         _TLinkedTable *list;
-        if (index != NULL) {
-            *index = i;
+        if (idx != NULL) {
+            *idx = i;
         }
         for (list = dict->lists[i]; list != NULL; list = list->next) {
             if (key == list->key) {
@@ -75,8 +75,7 @@ static _TLinkedTable *_lookup(_TCDictionary *dict, void *key)
 
 void _set(_TCDictionary *dict, void *key, void *value)
 {
-    unsigned int index;
-    _TLinkedTable *list;
+    unsigned int idx;
 
     if (dict->tableSize == 0 || dict->count >= dict->tableSize * 3 / 4) {
         _TLinkedTable **newLists;
@@ -104,12 +103,12 @@ void _set(_TCDictionary *dict, void *key, void *value)
         tFree(dict->lists);
         dict->lists = newLists;
     }
-    list = __lookup(dict, key, &index);
+    _TLinkedTable *list = __lookup(dict, key, &idx);
     if (list == NULL) {
         list = tAlloc(sizeof(_TLinkedTable));
         list->key = key;
-        list->next = dict->lists[index];
-        dict->lists[index] = list;
+        list->next = dict->lists[idx];
+        dict->lists[idx] = list;
         ++(dict->count);
     }
     list->value = value;
@@ -481,17 +480,17 @@ static void mock(struct objc_object *self, const char *file, int line)
     if (data->isRecording) {
         @throw [TTestException exceptionWithMessage: @"'mock' was called while already recording."];
     }
-    Class class = self->class_pointer;
-    data->superClass = class->super_class;
-    class->super_class = Nil;
-    data->methods = class->methods;
-    class->methods = recordMethods();
+    Class klazz = self->class_pointer;
+    data->superClass = klazz->super_class;
+    klazz->super_class = Nil;
+    data->methods = klazz->methods;
+    klazz->methods = recordMethods();
     data->isRecording = YES;
     data->totallyReplaceMethod = NO;
     data->callCount = 1;
     data->file = file;
     data->line = line;
-    __objc_update_dispatch_table_for_class(class);
+    __objc_update_dispatch_table_for_class(klazz);
 }
 
 
@@ -680,22 +679,22 @@ static void setException(void *self, id exception)
 }
 
 
-static void skipParameterCheck(void *self, unsigned int index)
+static void skipParameterCheck(void *self, unsigned int idx)
 {
-    [[getData(self)->messages lastObject] skipParameterCheck: index + 1];
+    [[getData(self)->messages lastObject] skipParameterCheck: idx + 1];
 }
 
 
-+ (Class)skipParameterCheck: (unsigned int)index
++ (Class)skipParameterCheck: (unsigned int)idx
 {
-    skipParameterCheck(self, index);
+    skipParameterCheck(self, idx);
     return self;
 }
 
 
-- skipParameterCheck: (unsigned int)index
+- skipParameterCheck: (unsigned int)idx
 {
-    skipParameterCheck(self, index);
+    skipParameterCheck(self, idx);
     return self;
 }
 

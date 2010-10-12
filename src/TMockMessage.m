@@ -364,8 +364,8 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                         char elementType = *(end - 1);
                         if (elementType == _C_CHR || elementType == _C_UCHR) {
                             unsigned arraySize = 0;
-                            for (int i = 0; i < end - type - 2; ++i) {
-                                arraySize += (*(end - 2 - i) - '0') * pow(10, i);
+                            for (int j = 0; j < end - type - 2; ++j) {
+                                arraySize += (*(end - 2 - j) - '0') * pow(10, j);
                             }
                             [argStrings addObject:
                                     _charArrayString(*(unsigned char **)arg, arraySize)];
@@ -612,13 +612,13 @@ RESULT_ACCESSOR(double, Double);
 }
 
 
-- skipParameterCheck: (unsigned int)index
+- skipParameterCheck: (unsigned int)idx
 {
-    if (index < _argCount) {
-        _skipCheck[index] = YES;
+    if (idx < _argCount) {
+        _skipCheck[idx] = YES;
     } else {
         @throw [TTestException exceptionWithFormat: @"Index %u is too high for the recent "
-                @"message which had only %u arguments.", index, _argCount];
+                @"message which had only %u arguments.", idx, _argCount];
     }
     return nil;
 }
@@ -703,7 +703,7 @@ RESULT_ACCESSOR(double, Double);
     TArray *selArray = [selString componentsSeparatedByString: @":"];
 
     id <TIterator> args = [_argStrings iterator];
-    int index = 2;
+    int idx = 2;
     for (id <TIterator> i = [[selArray arrayByRemovingLastObject] iterator];
             [i hasCurrent]; [i next]) {
         if ([args hasCurrent] || [[i current] length] > 0) {
@@ -712,23 +712,23 @@ RESULT_ACCESSOR(double, Double);
         [stream writeObject: [i current]];
         if ([args hasCurrent]) {
             [stream writeObject: @": "];
-            if (_skipCheck[index]) {
+            if (_skipCheck[idx]) {
                 [stream writeObject: @"UNCHECKED"];
             } else {
                 [stream writeObject: [args current]];
             }
             [args next];
         }
-        ++index;
+        ++idx;
     }
     for (; [args hasCurrent]; [args next]) {
         [stream writeObject: @", "];
-        if (_skipCheck[index]) {
+        if (_skipCheck[idx]) {
             [stream writeObject: @"UNCHECKED"];
         } else {
             [stream writeObject: [args current]];
         }
-        ++index;
+        ++idx;
     }
     if (![selString hasSuffix: @":"]) {
         [stream writeByte: ' '];
