@@ -439,6 +439,7 @@ static TString *__package = nil;
             if (([method hasPrefix: @"test"] || [method hasPrefix: @"itShould"]) &&
                     (nil == methodFilter || [method matches: methodFilter]) &&
                     ![method matches: @"Broken$"]) {
+                [TTestCaseStatistics countExample];
                 TStack *exceptions = [TStack stack];
                 @try {
                     [self clearHint];
@@ -466,6 +467,7 @@ static TString *__package = nil;
                 }
                 if ([exceptions containsData]) {
                     ++failures;
+                    [TTestCaseStatistics countFailure];
                     [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
                             [self className], method, [exceptions pop]];
                     while ([exceptions containsData]) {
@@ -516,6 +518,38 @@ static TString *__package = nil;
 @end
 
 
+@implementation TTestCaseStatistics:NSObject
+
+
+static unsigned int __examples = 0;
++ (void)countExample
+{
+    __examples++;
+}
+
+
++ (unsigned int)exampleCount
+{
+    return __examples;
+}
+
+
+static unsigned int __failures = 0;
++ (void)countFailure
+{
+    __failures++;
+}
+
+
++ (unsigned int)failureCount
+{
+    return __failures;
+}
+
+
+@end
+
+
 int objcmain(int argc, char *argv[])
 {
     int result = 0;
@@ -551,6 +585,15 @@ int objcmain(int argc, char *argv[])
         } @finally {
             [test release];
         }
+    }
+    [TUserIO eprintln: @"%u examples, %u failures",
+            [TTestCaseStatistics exampleCount],
+            [TTestCaseStatistics failureCount]];
+
+    if (result > 0) {
+        [TUserIO println: @"*** RED BAR ***"];
+    } else {
+        [TUserIO println: @"*** GREEN BAR ***"];
     }
     return result;
 }
