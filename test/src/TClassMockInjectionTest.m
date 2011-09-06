@@ -124,7 +124,7 @@
     @try {
         [_class classMethodReturningArgument: _class];
     } @catch (id e) {
-        ASSERTEQUALS(@"anException", [e autorelease]);
+        ASSERTEQUALS(@"anException", e);
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);
@@ -140,7 +140,6 @@
     @try {
         verifyAndCleanupMocks();
     } @catch (TTestException *e) {
-        [e autorelease];
         exceptionCaught = YES;
     }
     ASSERT(exceptionCaught);

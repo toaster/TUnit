@@ -443,7 +443,7 @@ void verifyAndCleanupMocks()
                 @try {
                     verifyAndCleanupMocksFor(list->key);
                 } @catch (id e) {
-                    [exceptions addObject: [e autorelease]];
+                    [exceptions addObject: e];
                 }
                 list = list->next;
             }
