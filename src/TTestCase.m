@@ -126,8 +126,7 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h }
 
 
-//#pragma .h #define FAIL(x...) _FAIL(id, 0, nil, x)
-#pragma .h #define FIXME_FAIL(x...) _FAIL(id, 0, nil, x)
+#pragma .h #define FAIL(x...) _FAIL(id, 0, nil, x)
 
 #pragma .h #define FAIL_WITH_CLASS(exceptionClass, x...)\
 #pragma .h         _FAIL(exceptionClass *, 0, nil, x)
