@@ -194,11 +194,12 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
         int i = 0;
 
         messageIsValid = YES;
-        while (*type) {
+        while (type && *type) {
             type = objc_skip_argspec(type);
             ++i;
         }
         result = i - 1;
+        if (i < 0) result = 0;
         if (values != NULL) {
             *values = (TMockVariable *)tAllocZero(result *
                     sizeof(TMockVariable));
