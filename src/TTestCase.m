@@ -386,12 +386,34 @@ static TString *__package = nil;
 }
 
 
+- (void)beforeAll
+{
+}
+
+
+- (void)before
+{
+    [self setUp];
+}
+
+
 - (void)setUp
 {
 }
 
 
+- (void)after
+{
+    [self tearDown];
+}
+
+
 - (void)tearDown
+{
+}
+
+
+- (void)afterAll
 {
 }
 
@@ -429,52 +451,60 @@ static TString *__package = nil;
     struct objc_method_list *list = [self class]->methods;
 
     [self printRunning];
-    while (list != NULL) {
-        for (int i = list->method_count; i-- > 0;) {
-            TAutoreleasePool *testPool = [[TAutoreleasePool alloc] init];
-            SEL sel = list->method_list[i].method_name;
-            TString *method = [TUtils stringFromSelector: sel];
+    @try {
+        [self clearHint];
+        [self beforeAll];
+        while (list != NULL) {
+            for (int i = list->method_count; i-- > 0;) {
+                TAutoreleasePool *testPool = [[TAutoreleasePool alloc] init];
+                SEL sel = list->method_list[i].method_name;
+                TString *method = [TUtils stringFromSelector: sel];
 
-            if (([method hasPrefix: @"test"] || [method hasPrefix: @"itShould"]) &&
-                    (nil == methodFilter || [method matches: methodFilter]) &&
-                    ![method matches: @"Broken$"]) {
-                TStack *exceptions = [TStack stack];
-                @try {
-                    [self clearHint];
-                    [TMockMessage cleanupOrderedMessages];
-                    if (tUnitBeforeSetUp != NULL) {
-                        tUnitBeforeSetUp();
-                    }
-                    [self setUp];
+                if (([method hasPrefix: @"test"] || [method hasPrefix: @"itShould"]) &&
+                        (nil == methodFilter || [method matches: methodFilter]) &&
+                        ![method matches: @"Broken$"]) {
+                    TStack *exceptions = [TStack stack];
                     @try {
-                        [TUserIO print: @"."];
-                        [self perform: sel];
-                    } @catch(id e) {
-                        [exceptions push: e];
-                    } @finally {
+                        [self clearHint];
+                        [TMockMessage cleanupOrderedMessages];
+                        if (tUnitBeforeSetUp != NULL) {
+                            tUnitBeforeSetUp();
+                        }
+                        [self before];
                         @try {
-                            verifyAndCleanupMocks();
+                            [TUserIO print: @"."];
+                            [self perform: sel];
                         } @catch(id e) {
                             [exceptions push: e];
                         } @finally {
-                            [self tearDown];
+                            @try {
+                                verifyAndCleanupMocks();
+                            } @catch(id e) {
+                                [exceptions push: e];
+                            } @finally {
+                                [self after];
+                            }
+                        }
+                    } @catch(id e) {
+                        [exceptions push: e];
+                    }
+                    if ([exceptions containsData]) {
+                        ++failures;
+                        [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
+                                [self className], method, [exceptions pop]];
+                        while ([exceptions containsData]) {
+                            [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
                         }
                     }
-                } @catch(id e) {
-                    [exceptions push: e];
                 }
-                if ([exceptions containsData]) {
-                    ++failures;
-                    [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
-                            [self className], method, [exceptions pop]];
-                    while ([exceptions containsData]) {
-                        [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
-                    }
-                }
+                [testPool release];
             }
-            [testPool release];
+            list = list->method_next;
         }
-        list = list->method_next;
+        [self afterAll];
+    } @catch(id e) {
+        ++failures;
+        [TUserIO eprintln: @"ERROR: Test %@ failed - %@", [self className], e];
     }
     [TUserIO println: failures == 0 ? @" OK" : @" FAILED"];
     [pool release];
