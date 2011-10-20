@@ -37,6 +37,8 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 
 #pragma .h #define ASSERTEQUALS(obj1, obj2) _ASSERT(_assert: obj1 equals: obj2)
 
+#pragma .h #define ASSERTNOTEQUALS(obj1, obj2) _ASSERT(_assert: obj1 notEquals: obj2)
+
 #pragma .h #define ASSERTIDENTICAL(obj1, obj2) _ASSERT(_assert: obj1 isIdenticalTo: obj2)
 
 #pragma .h #define ASSERT(x) _ASSERT(_assert: @#x isTrue: x shouldBeFalse: NO)
@@ -179,6 +181,15 @@ static TString *__package = nil;
         }
         @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
                 @"»%@« is not equal »%@«%s%@", obj1, obj2, msg != nil ? ":\n" : "", msg]];
+    }
+}
+
+
+- (void)_assert: obj1 notEquals: obj2 file: (const char *)file line: (int)line
+{
+    if ((obj1 == nil && obj2 == nil) || [obj1 isEqual: obj2]) {
+        @throw [TTestException exceptionAt: file : line
+                withMessage: [self assertionMessage: @"»%@« is equal »%@«", obj1, obj2]];
     }
 }
 
