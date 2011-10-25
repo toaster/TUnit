@@ -57,6 +57,9 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h #define ASSERTLISTCONTAINS(expected, got)\
 #pragma .h         _ASSERT(_assertList: got containsElementsFrom: expected)
 
+#pragma .h #define ASSERTLISTDOESNOTCONTAIN(expected, got)\
+#pragma .h         _ASSERT(_assertList: got doesNotContainElementsFrom: expected)
+
 #pragma .h #define ASSERTSUBSTRING(expected, got) _ASSERT(_assert: got hasSubstring: expected)
 
 #pragma .h #define ASSERTMATCHES(expected, result) _ASSERT(_assert: result matches: expected)
@@ -357,6 +360,22 @@ static TString *__package = nil;
                 [unexpected count] > 0 ? unexpected : nil,
                 [missed count] > 0 ? "\nMissed: " : "",
                 [missed count] > 0 ? missed : nil]];
+    }
+}
+
+
+- (void)_assertList: (NSArray *)got doesNotContainElementsFrom: (NSArray *)forbidden
+        file: (const char *)file line: (int)line
+{
+    id unexpected = [TMutableArray array];
+    for (id <TIterator> i = [got iterator]; [i hasCurrent]; [i next]) {
+        if ([forbidden containsObject: [i current]]) {
+            [unexpected addObject: [i current]];
+        }
+    }
+    if ([unexpected count] > 0) {
+        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
+                @"%@ does contain the forbidden elements %@", got, unexpected]];
     }
 }
 
