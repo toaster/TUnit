@@ -165,7 +165,7 @@ static TString *__package = nil;
 {
     va_list args;
     va_start(args, format);
-    NSString *reason = [TString stringWithFormat: format andArglist: &args];
+    TString *reason = [TString stringWithFormat: format andArglist: &args];
     va_end(args);
     TString *message = [TString stringWithFormat: @"Assertion failed: %@", reason];
     if (_hint != nil) {
@@ -319,7 +319,7 @@ static TString *__package = nil;
 }
 
 
-- (void)_assertList: (NSArray *)got containsElementsFrom: (NSArray *)expected
+- (void)_assertList: (TArray *)got containsElementsFrom: (TArray *)expected
         file: (const char *)file line: (int)line
 {
     [self _assertList: got containsElementsFrom: expected failOnUnexpected: NO
@@ -327,7 +327,7 @@ static TString *__package = nil;
 }
 
 
-- (void)_assertList: (NSArray *)got containsEqualElementsAs: (NSArray *)expected
+- (void)_assertList: (TArray *)got containsEqualElementsAs: (TArray *)expected
         file: (const char *)file line: (int)line
 {
     [self _assertList: got containsElementsFrom: expected failOnUnexpected: YES
@@ -364,7 +364,7 @@ static TString *__package = nil;
 }
 
 
-- (void)_assertList: (NSArray *)got doesNotContainElementsFrom: (NSArray *)forbidden
+- (void)_assertList: (TArray *)got doesNotContainElementsFrom: (TArray *)forbidden
         file: (const char *)file line: (int)line
 {
     id unexpected = [TMutableArray array];
@@ -400,7 +400,7 @@ static TString *__package = nil;
 }
 
 
-- (void)setHint: (NSString *)hint
+- (void)setHint: (TString *)hint
 {
     if (_hint != hint) {
         [_hint release];
@@ -474,7 +474,7 @@ static TString *__package = nil;
 }
 
 
-- (int)run: (NSString *)methodFilter
+- (int)run: (TString *)methodFilter
 {
     int failures = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
