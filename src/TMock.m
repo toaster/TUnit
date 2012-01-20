@@ -8,7 +8,7 @@
 
 #pragma .h #include "TUnit/TMockController.h"
 
-#include <objc/objc-api.h>
+#include <objc/runtime.h>
 
 #include "TUnit/TTestException.h"
 

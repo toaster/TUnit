@@ -26,7 +26,7 @@
 
 - (void)cleanup
 {
-    [_controller verify];
+    [_controller verifyMocks];
     _controller = nil;
     _mock = nil;
 }
@@ -113,7 +113,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     // TODO: extraTest für zu früh verify (nicht alle messages gerufen) und
     // message calling zwischen verify und record
-    FAIL([_controller verify]);
+    FAIL([_controller verifyMocks]);
     FAIL([stream close]);
 }
 
@@ -170,7 +170,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
 //    [_controller record];
 //
 //    [stream readIntoBuffer: buf length: 10];
@@ -181,7 +181,7 @@
 //    ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 //    ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 //
-//    [_controller verify];
+//    [_controller verifyMocks];
     [_controller record];
 
     [_controller expect: [stream readIntoBuffer: buf length: 10]
@@ -191,7 +191,7 @@
 
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     [_controller expect: [stream readIntoBuffer: buf length: 10]
@@ -202,7 +202,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
 //    [_controller record];
 //
 //    [_controller expect: [stream readIntoBuffer: buf length: 10]
@@ -232,7 +232,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     TFileInputStream *s2 = (TFileInputStream *)[_controller
@@ -274,7 +274,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     TFileInputStream *s2 = (TFileInputStream *)[_controller
@@ -306,7 +306,7 @@
     FAIL(ASSERT([stream readIntoBuffer: buf length: 10] == 11));
     ASSERT([stream readIntoBuffer: buf length: 11] == 11);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
-    FAIL([_controller verify]);
+    FAIL([_controller verifyMocks]);
 }
 
 
@@ -323,7 +323,7 @@
 
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
-    FAIL([_controller verify]);
+    FAIL([_controller verifyMocks]);
 
     [_controller record];
 
@@ -342,7 +342,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     [s2 dealloc];
-    FAIL([_controller verify]);
+    FAIL([_controller verifyMocks]);
 }
 
 
@@ -362,7 +362,7 @@
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
     FAIL([stream readIntoBuffer: buf length: 10]);
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     TFileInputStream *s2 = (TFileInputStream *)[_controller
@@ -396,7 +396,7 @@
 
     [_controller replay];
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     [_controller expect: [stream readIntoBuffer: buf length: 10]
@@ -406,7 +406,7 @@
 
     ASSERT([stream readIntoBuffer: buf length: 10] == 10);
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     [_controller expect: [stream readIntoBuffer: buf length: 10]
@@ -430,7 +430,7 @@
 
     [_controller replay];
 
-    [_controller verify];
+    [_controller verifyMocks];
     [_controller record];
 
     [_controller expect: [stream readIntoBuffer: buf length: 10]

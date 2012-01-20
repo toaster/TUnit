@@ -9,8 +9,9 @@
 #pragma .h #include "TUnit/TMock.h"
 
 #include <math.h>
-#include <objc/objc-api.h>
-#include <objc/encoding.h>
+#include <objc/runtime.h>
+#include <string.h>
+#include <ctype.h>
 
 #include "TUnit/TTestException.h"
 
@@ -122,8 +123,11 @@ static inline TString *_doubleString(double aDouble)
 
 static inline BOOL _isTMock(id object)
 {
-    return [TMock class] == object_get_class(object);
+    return [TMock class] == object_getClass(object);
 }
+
+
+#define OBJ_IS_INSTANCE(obj) !class_isMetaClass(object_getClass(obj))
 
 
 static inline TString *_idString(id object)
@@ -137,7 +141,7 @@ static inline TString *_idString(id object)
 //        return [TString stringWithFormat: @"@protocol(%@)", [(Protocol *)object name]];
     } else {
         return [TString stringWithFormat: @"<%@ %s %@>", [object className],
-                object_is_instance(object) ? "instance" : "class", object];
+                OBJ_IS_INSTANCE(object) ? "instance" : "class", object];
     }
 }
 
@@ -160,59 +164,79 @@ static inline TString *_selString(SEL sel)
 }
 
 
-static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
+struct objc_method {
+    SEL method_name;
+    const char *method_types;
+    IMP method_imp;
+};
+
+
+static inline void methodFromDescription(struct objc_method_description *desc, struct objc_method *method)
+{
+    method->method_name = desc->name;
+    method->method_types = desc->types;
+    method->method_imp = NULL;
+}
+
+
+static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
         TMockVariable **values, TMutableArray *argStrings, BOOL validate,
         int argCount, TMockVariable *args, BOOL *skipCheck)
 {
-    int result = 0;
+    unsigned int result = 0;
     BOOL messageIsValid = NO;
 
-    struct objc_method_description *methodDescription = NULL;
+    Method method = NULL;
     if (_isTMock(receiver)) {
         TMock *mock = (TMock *)receiver;
         if (mock->_metaClass != Nil) {
-            methodDescription = (struct objc_method_description *)
-                    class_get_instance_method(mock->_metaClass, sel);
+            method = class_getInstanceMethod(mock->_metaClass, sel);
         } else if (mock->_class != Nil) {
-            methodDescription = (struct objc_method_description *)
-                    class_get_instance_method(mock->_class, sel);
+            method = class_getInstanceMethod(mock->_class, sel);
         } else if (mock->_protocol != NULL) {
-            methodDescription = [mock->_protocol descriptionForInstanceMethod: sel];
-            if (methodDescription == NULL) {
-                methodDescription = [mock->_protocol descriptionForClassMethod: sel];
+            struct objc_method_description *description =
+                    [mock->_protocol descriptionForInstanceMethod: sel];
+            if (!description) {
+                description = [mock->_protocol descriptionForClassMethod: sel];
+            }
+            if (description) {
+                method = alloca(sizeof(struct objc_method));
+                methodFromDescription(description, method);
             }
         }
-    } else if (object_is_instance(receiver)) {
-        methodDescription = (struct objc_method_description *)class_get_instance_method(
-                object_get_class(receiver), sel);
+    } else if (OBJ_IS_INSTANCE(receiver)) {
+        method = class_getInstanceMethod(object_getClass(receiver), sel);
     } else {
-        methodDescription = (struct objc_method_description *)class_get_class_method(
-                class_get_meta_class(receiver), sel);
+        method = class_getClassMethod(receiver, sel);
     }
-    if (methodDescription != NULL) {
-        const char *type = methodDescription->types;
-        int i = 0;
-
+//[TUserIO eprintln: @"method type encoding: %s", method_getTypeEncoding(method)];
+    if (method != NULL) {
         messageIsValid = YES;
-        while (type && *type) {
-            type = objc_skip_argspec(type);
-            ++i;
-        }
-        result = i - 1;
-        if (i < 0) result = 0;
+        result = method_getNumberOfArguments(method);
         if (values != NULL) {
-            *values = (TMockVariable *)tAllocZero(result *
-                    sizeof(TMockVariable));
+            *values = (TMockVariable *)tAllocZero(result * sizeof(TMockVariable));
         }
-        type = methodDescription->types;
-        i = 0;
-        char *arg;
-        for (arg = method_get_next_argument(argFrame, &type);
-                arg != NULL; arg = method_get_next_argument(argFrame, &type)) {
-            BOOL isValid = argCount > i;
+        for (int i = 0; i < result; ++i) {
+            char encoding[20];
+            char type;
+            char *cur = encoding;
 
-            type = objc_skip_type_qualifiers(type);
-            switch (*type) {
+            method_getArgumentType(method, i, encoding, 20);
+            if (*cur == _C_CONST) {
+                cur++;
+            }
+            type = *cur;
+            // FIXME das ist unvollständig. Zwischen '^' (_C_PTR) und dem Offset steht zum beispiel
+            // auch manchmal (…) (_C_ARY_B … _C_ARY_E) wobei '…' Zahlen enthalten kann.
+            // skip modifiers like _C_VOID or _C_CONST up to offset
+            while (!isdigit(*++cur));
+//[TUserIO eprintln: @"arg type+off for %d: %c, %s", i, type, cur];
+            const char *arg = argFrame->arg_ptr + atoi(cur);
+            if (arg == NULL) {
+                break;
+            }
+            BOOL isValid = argCount > i;
+            switch (type) {
                 // Das paßt für i386 -> andere Architekturen -> feinere
                 // Behandlung
                 case _C_CHR:
@@ -226,8 +250,7 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                     break;
                 case _C_SHT:
                 case _C_USHT:
-                    [argStrings addObject: _wordString(*((word *)arg),
-                            *type == _C_SHT)];
+                    [argStrings addObject: _wordString(*((word *)arg), type == _C_SHT)];
                     if (!validate) {
                         (*values)[i].aWord = *((word *)arg);
                     } else if (isValid) {
@@ -325,8 +348,7 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                 case _C_UINT:
                 case _C_LNG:
                 case _C_ULNG:
-                    [argStrings addObject: _dwordString(*((dword *)arg),
-                            *type)];
+                    [argStrings addObject: _dwordString(*((dword *)arg), type)];
                     if (!validate) {
                         (*values)[i].aDword = *((dword *)arg);
                     } else if (isValid && i > 1) {
@@ -335,8 +357,7 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                     break;
                 case _C_LNG_LNG:
                 case _C_ULNG_LNG:
-                    [argStrings addObject: _qwordString(*((qword *)arg),
-                            *type == _C_LNG_LNG)];
+                    [argStrings addObject: _qwordString(*((qword *)arg), type == _C_LNG_LNG)];
                     if (!validate) {
                         (*values)[i].aQword = *((qword *)arg);
                     } else if (isValid) {
@@ -361,11 +382,12 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                     break;
                 case _C_ARY_B:
                     {
-                        char *end = strchr(type, _C_ARY_E);
+                        char *end = strchr(cur, _C_ARY_E);
                         char elementType = *(end - 1);
+                        // FIXME das passt noch nicht
                         if (elementType == _C_CHR || elementType == _C_UCHR) {
                             unsigned arraySize = 0;
-                            for (int j = 0; j < end - type - 2; ++j) {
+                            for (int j = 0; j < end - cur - 2; ++j) {
                                 arraySize += (*(end - 2 - j) - '0') * pow(10, j);
                             }
                             [argStrings addObject:
@@ -410,7 +432,6 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
             if (validate && !isValid) {
                 messageIsValid = NO;
             }
-            ++i;
         }
     } else if (values != NULL) {
         *values = NULL;
@@ -420,6 +441,7 @@ static inline int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
                 @"%d (should be %d) for message '%@' to %@.", result, argCount,
                 [TUtils stringFromSelector: sel], _idString(receiver)];
     }
+//[TUserIO eprintln: @"argCount for %@: %d", [TUtils stringFromSelector: sel], result];
     return validate ? messageIsValid : result;
 }
 
@@ -685,8 +707,8 @@ RESULT_ACCESSOR(double, Double);
 
 - (BOOL)isForArgs: (arglist_t)argFrame
 {
-    return _parameterValues(_receiver, _sel, argFrame, NULL, nil, YES,
-            _argCount, _args, _skipCheck) != 0;
+    return (BOOL)_parameterValues(_receiver, _sel, argFrame, NULL, nil, YES,
+            _argCount, _args, _skipCheck);
 }
 
 

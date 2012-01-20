@@ -8,10 +8,10 @@
 
 #pragma .h #include <sys/resource.h>
 
-#pragma .h @class TString;
 
 #include <objc/objc.h>
-#include <objc/objc-api.h>
+#include <objc/runtime.h>
+#include <string.h>
 
 #include "TUnit/TTestException.h"
 #include "TUnit/TMockController.h"
@@ -114,7 +114,7 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h     if (e == nil && unexpectedException == nil) {\
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
 #pragma .h                 withMessage: @#x @" did not fail"];\
-#pragma .h     } else if (expectedE != nil && ![expectedE isEqualTo: e]) {\
+#pragma .h     } else if (expectedE != nil && ![expectedE isEqual: e]) {\
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
 #pragma .h                 withFormat: @#x @" failed with unexpected exception %@ instead of %@",\
 #pragma .h                 e, expectedE];\
@@ -122,10 +122,10 @@ TUnitCallBack *tUnitBeforeSetUp = NULL;
 #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
 #pragma .h                 withFormat: @#x @" failed with unexpected exception %@ instead of %@",\
 #pragma .h                 unexpectedException, @#eClass];\
-#pragma .h     } else if (eId != 0 && eId != [(id)e errorId]) {\
-#pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
-#pragma .h                 withFormat: @#x@" failed with unexpected exception ID %d instead of %d",\
-#pragma .h                 [(id)e errorId], eId];\
+/*FIXME IP #pragma .h     } else if (eId != 0 && eId != [(id)e errorId]) {\
+ *FIXME IP #pragma .h         @throw [TTestException exceptionAt: __FILE__ : __LINE__ \
+ *FIXME IP #pragma .h                 withFormat: @#x@" failed with unexpected exception ID %d instead of %d",\
+ *FIXME IP #pragma .h                 [(id)e errorId], eId];*/\
 #pragma .h     }\
 #pragma .h     code;\
 #pragma .h }
@@ -244,7 +244,7 @@ static TString *__package = nil;
 
 - objDescription: obj
 {
-    return object_get_class(obj) == [TMock class] ? (id)[TMockController descriptionFor: obj] : obj;
+    return object_getClass(obj) == [TMock class] ? (id)[TMockController descriptionFor: obj] : obj;
 }
 
 
@@ -429,6 +429,12 @@ static TString *__package = nil;
 
 - (void)setUp
 {
+    [self prepare];
+}
+
+
+- (void)prepare
+{
 }
 
 
@@ -439,6 +445,12 @@ static TString *__package = nil;
 
 
 - (void)tearDown
+{
+    [self cleanup];
+}
+
+
+- (void)cleanup
 {
 }
 
@@ -471,6 +483,7 @@ static TString *__package = nil;
     }
     [TUserIO print: [self className]];
     [TUserIO print: @" "];
+    [TUserIO flush];
 }
 
 
@@ -478,16 +491,17 @@ static TString *__package = nil;
 {
     int failures = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
-    struct objc_method_list *list = [self class]->methods;
-
     [self printRunning];
     @try {
         [self clearHint];
         [self beforeAll];
-        while (list != NULL) {
-            for (int i = list->method_count; i-- > 0;) {
+
+        unsigned int methodCount = 0;
+        Method *methods = class_copyMethodList([self class], &methodCount);
+        if (methods) {
+            for (unsigned int i = 0; i < methodCount; i++) {
                 TAutoreleasePool *testPool = [[TAutoreleasePool alloc] init];
-                SEL sel = list->method_list[i].method_name;
+                SEL sel = method_getName(methods[i]);
                 TString *method = [TUtils stringFromSelector: sel];
 
                 if (([method hasPrefix: @"test"] || [method hasPrefix: @"itShould"]) &&
@@ -503,6 +517,7 @@ static TString *__package = nil;
                         [self before];
                         @try {
                             [TUserIO print: @"."];
+                            [TUserIO flush];
                             [self perform: sel];
                         } @catch(id e) {
                             [exceptions push: e];
@@ -529,7 +544,7 @@ static TString *__package = nil;
                 }
                 [testPool release];
             }
-            list = list->method_next;
+            free(methods);
         }
         [self afterAll];
     } @catch(id e) {
@@ -578,9 +593,6 @@ static TString *__package = nil;
 int objcmain(int argc, char *argv[])
 {
     int result = 0;
-    void *classIterator = NULL;
-    Class class;
-    Class testCaseClass = [TTestCase class];
     if (argc < 4) {
         @throw [TTestException exceptionWithMessage: @"Need test base dir, data dir and package"];
     }
@@ -594,14 +606,21 @@ int objcmain(int argc, char *argv[])
     }
 
     TMutableDictionary *testClasses = [TMutableDictionary dictionary];
-    while ((class = objc_next_class(&classIterator)) != Nil) {
-        if (class_get_class_method(class->class_pointer, @selector(isKindOf:)) &&
+    Class testCaseClass = [TTestCase class];
+    int classCount = objc_getClassList(NULL, 0);
+    Class *classes = alloca(classCount * sizeof(Class));
+    objc_getClassList(classes, classCount);
+    for (int i = 0; i < classCount; i++) {
+        Class class = classes[i];
+        // GCC-Bug http://gcc.gnu.org/bugzilla/show_bug.cgi?id=51892
+        [class class];
+        if (class_respondsToSelector(object_getClass(class), @selector(isKindOf:)) &&
                 [class isKindOf: testCaseClass] && ![[class className] matches: @"TestCase$"] &&
                 (classFilter == nil || [[class className] matches: classFilter])) {
             [testClasses setObject: class forKey: [class className]];
         }
     }
-    for (id <TIterator> i = [[[testClasses allKeys] sortedArrayUsingSelector:
+    for (id <TIterator> i = [[[testClasses allKeys] sortedArrayUsing:
             @selector(caseInsensitiveCompare:)] iterator]; [i hasCurrent]; [i next]) {
         TTestCase *test = nil;
         @try {

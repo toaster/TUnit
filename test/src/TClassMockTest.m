@@ -28,7 +28,7 @@
 
 - (void)cleanup
 {
-    [_controller verify];
+    [_controller verifyMocks];
     _controller = nil;
     _mock = nil;
 }

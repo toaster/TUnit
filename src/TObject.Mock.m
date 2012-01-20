@@ -6,9 +6,7 @@
 
 #pragma .h #include <TFoundation/TFoundation.h>
 
-#include <objc/objc-api.h>
-#include <objc/encoding.h>
-#include <objc/sarray.h>
+#include <objc/runtime.h>
 
 #include "TUnit/TTestException.h"
 #include "TUnit/TMockMessage.h"
@@ -35,8 +33,9 @@ typedef struct __TCDictionary {
 
 
 typedef struct __TMockData {
-    Class superClass;
-    MethodList *methods;
+    BOOL rcvIsClass;
+    Class originalClass;
+    Class replayerClass;
     BOOL isRecording;
     TMutableArray *messages;
     BOOL totallyReplaceMethod;
@@ -153,14 +152,13 @@ static void removeData(void *key)
 }
 
 
-static inline void checkForResponsibility(id self, SEL sel)
+static inline void checkForResponsibility(id obj, SEL sel)
 {
-    _TMockData *data = getData(self);
-    if (class_get_instance_method(data->superClass, sel) == METHOD_NULL) {
-        @throw [TTestException exceptionWithFormat: @"<%s %s %p> cannot mock invalid message '%@'",
-                object_get_class_name(data->superClass),
-                object_is_instance(self) ? "instance" : "class", self,
-                [TUtils stringFromSelector: sel]];
+    _TMockData *data = getData(obj);
+    if (!class_respondsToSelector(data->originalClass, sel)) {
+        @throw [TTestException exceptionWithFormat:
+                @"<%s %s %p> cannot mock invalid message '%@'", class_getName(data->originalClass),
+                data->rcvIsClass ? "class" : "instance", obj, [TUtils stringFromSelector: sel]];
     }
 }
 
@@ -172,25 +170,26 @@ static byte byteReturner(id self, SEL sel, ...)
 }
 
 
-static id replay(id self, SEL sel, ...)
+static id replay(id obj, SEL sel, ...)
 {
     arglist_t argFrame = __builtin_apply_args();
-    _TMockData *data = getData(self);
+    _TMockData *data = getData(obj);
     TMockMessage *msg = nil;
     id result = nil;
     TMutableArray *similars = [TMutableArray array];
 
-    if (data != NULL) {
-        for (id <TIterator> i = [data->messages reverseIterator];
-                [i hasCurrent] && msg == nil; [i next]) {
-            msg = [[i current] checkForSel: sel receiver: self andArgs: argFrame
-                    addSimilarityTo: similars];
-        }
+    if (data == NULL) {
+        @throw @"Received replay for receiver without data.";
+    }
+    for (id <TIterator> i = [data->messages reverseIterator];
+            [i hasCurrent] && msg == nil; [i next]) {
+        msg = [[i current] checkForSel: sel receiver: obj andArgs: argFrame
+                addSimilarityTo: similars];
     }
     if (msg == nil) {
         if ([data->totallyReplacedMethods contains: [TUtils stringFromSelector: sel]]) {
             TMockMessage *unexpected = [TMockMessage unexpectedMockMessageWithSel: sel
-                    receiver: self andArgs: argFrame];
+                    receiver: obj andArgs: argFrame];
             if ([similars containsData]) {
                 @throw [TTestException exceptionWithFormat: @"Unexpected message: %@\n"
                         @"Expected similar messages:\n  %@",
@@ -199,14 +198,17 @@ static id replay(id self, SEL sel, ...)
                 @throw [TTestException exceptionWithFormat: @"Unexpected message: %@", unexpected];
             }
         } else {
-            Method *method = class_get_instance_method(self->class_pointer->super_class, sel);
-            __builtin_return(__builtin_apply((apply_t)method->method_imp, argFrame,
-                    atoi(objc_skip_typespec(method->method_types))));
+            Method method = class_getInstanceMethod(data->originalClass, sel);
+            // FIXME type-Encoding ist nicht zwangsweise 1 Byte (z.B. block-returnings haben '^v')
+            __builtin_return(__builtin_apply((apply_t)method_getImplementation(method), argFrame,
+                    atoi(method_getTypeEncoding(method) + 1)));
         }
     } else {
         BOOL isByteReturn = NO;
         // FIXME support für alle typen -> beachten: __builtin_return erst _nach_ throw exception,
         // popResult aber _vorher_. -> Tests!
+        // FIXME Apple Runtime hat keine typisierten Selektoren
+        //       → aber man kann sich die Method von der Klasse holen, die auch Typen hat.
         char type = sel->sel_types != NULL ? sel->sel_types[0] : _C_ID;
         switch (type) {
             case _C_CHR:
@@ -246,44 +248,17 @@ static id replay(id self, SEL sel, ...)
 }
 
 
-void registerMethod(Class class, SEL sel, IMP function)
-{
-    BOOL methodAlreadyRegistered = NO;
-    if (class->methods == NULL) {
-        class->methods = tAllocZero(sizeof(MethodList));
-    } else {
-        for (unsigned int i = 0; !methodAlreadyRegistered &&
-                class->methods->method_count > i; ++i) {
-            if (sel_eq(class->methods->method_list[i].method_name, sel)) {
-                methodAlreadyRegistered = YES;
-            }
-        }
-        if (!methodAlreadyRegistered) {
-            class->methods = tRealloc(class->methods,
-                    sizeof(MethodList) + class->methods->method_count * sizeof(Method));
-        }
-    }
-    if (!methodAlreadyRegistered) {
-        Method *method = &class->methods->method_list[class->methods->method_count++];
-        method->method_name = sel;
-        method->method_types = sel->sel_types;
-        method->method_imp = function;
-    }
-    __objc_update_dispatch_table_for_class(class);
-}
-
-
 #define _RETURN_FORWARD_0(type) return (type)0
 #define _RETURN_FORWARD_1(type) return (type)self
 #define _FORWARD_MESSAGE(type, returnself) static type type##Forward(id self, SEL cmd, SEL sel, arglist_t argFrame)\
 {\
     _TMockData *data = getData(self);\
     data->isRecording = NO;\
-    Class class = self->class_pointer;\
-    class->super_class = data->superClass;\
-    class->methods = data->methods;\
+    object_setClass(self, data->replayerClass);\
     checkForResponsibility(self, sel);\
-    registerMethod(class, sel, replay);\
+    const char *typeEncoding =\
+            method_getTypeEncoding(class_getInstanceMethod(data->originalClass, sel));\
+    class_addMethod(data->replayerClass, sel, replay, typeEncoding);\
     TMockMessage *m = [TMockMessage mockMessageWithSel: sel receiver: self andArgs: argFrame];\
     if (data->file != NULL) {\
         [m setLocation: data->file : data->line];\
@@ -324,76 +299,84 @@ FORWARD_MESSAGE(void)
 RETURNSELF_FORWARD_MESSAGE(block)
 
 
-static MethodList *recordMethods()
+static void addRecordMethods(Class class)
 {
-    static MethodList *methods = NULL;
-    if (methods == NULL) {
-        methods = tAlloc(sizeof(MethodList) + 8 * sizeof(Method));
-        methods->method_next = NULL;
-        methods->method_count = 8;
-
-        Method *method = &methods->method_list[0];
-        method->method_types = "C16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("byteForward::", method->method_types);
-        method->method_imp = (IMP)byteForward;
-
-        method = &methods->method_list[1];
-        method->method_types = "S16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("wordForward::", method->method_types);
-        method->method_imp = (IMP)wordForward;
-
-        method = &methods->method_list[2];
-        method->method_types = "I16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("dwordForward::", method->method_types);
-        method->method_imp = (IMP)dwordForward;
-
-        method = &methods->method_list[3];
-        method->method_types = "Q16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("qwordForward::", method->method_types);
-        method->method_imp = (IMP)qwordForward;
-
-        method = &methods->method_list[4];
-        method->method_types = "f16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("floatForward::", method->method_types);
-        method->method_imp = (IMP)floatForward;
-
-        method = &methods->method_list[5];
-        method->method_types = "d16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("doubleForward::", method->method_types);
-        method->method_imp = (IMP)doubleForward;
-
-        method = &methods->method_list[6];
-        method->method_types = "v16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("voidForward::", method->method_types);
-        method->method_imp = (IMP)voidForward;
-
-        method = &methods->method_list[7];
-        method->method_types = "^v16@0:4:8^(arglist=*[4c])12";
-        method->method_name = sel_register_typed_name("blockForward::", method->method_types);
-        method->method_imp = (IMP)blockForward;
-    }
-    return methods;
+    class_addMethod(class,
+            sel_registerName("byteForward::"), (IMP)byteForward, "C16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("wordForward::"), (IMP)wordForward, "S16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("dwordForward::"), (IMP)dwordForward, "I16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("qwordForward::"), (IMP)qwordForward, "Q16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("floatForward::"), (IMP)floatForward, "f16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("doubleForward::"), (IMP)doubleForward, "d16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("voidForward::"), (IMP)voidForward, "v16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class,
+            sel_registerName("blockForward::"), (IMP)blockForward, "^v16@0:4:8^(arglist=*[4c])12");
 }
+
+
+//static MethodList *recordMethods()
+//{
+//    static MethodList *methods = NULL;
+//    if (methods == NULL) {
+//        methods = tAlloc(sizeof(MethodList) + 8 * sizeof(Method));
+//        methods->method_next = NULL;
+//        methods->method_count = 8;
+//
+//        Method *method = &methods->method_list[0];
+//        method->method_types = "C16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("byteForward::", method->method_types);
+//        method->method_imp = (IMP)byteForward;
+//
+//        method = &methods->method_list[1];
+//        method->method_types = "S16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("wordForward::", method->method_types);
+//        method->method_imp = (IMP)wordForward;
+//
+//        method = &methods->method_list[2];
+//        method->method_types = "I16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("dwordForward::", method->method_types);
+//        method->method_imp = (IMP)dwordForward;
+//
+//        method = &methods->method_list[3];
+//        method->method_types = "Q16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("qwordForward::", method->method_types);
+//        method->method_imp = (IMP)qwordForward;
+//
+//        method = &methods->method_list[4];
+//        method->method_types = "f16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("floatForward::", method->method_types);
+//        method->method_imp = (IMP)floatForward;
+//
+//        method = &methods->method_list[5];
+//        method->method_types = "d16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("doubleForward::", method->method_types);
+//        method->method_imp = (IMP)doubleForward;
+//
+//        method = &methods->method_list[6];
+//        method->method_types = "v16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("voidForward::", method->method_types);
+//        method->method_imp = (IMP)voidForward;
+//
+//        method = &methods->method_list[7];
+//        method->method_types = "^v16@0:4:8^(arglist=*[4c])12";
+//        method->method_name = sel_register_typed_name("blockForward::", method->method_types);
+//        method->method_imp = (IMP)blockForward;
+//    }
+//    return methods;
+//}
 
 
 static void verifyAndCleanupMocksFor(struct objc_object *self)
 {
     _TMockData *data = getData(self);
     if (data != NULL) {
-        Class ghost = self->class_pointer;
-        self->class_pointer = self->class_pointer->super_class;
-        if (ghost->methods != recordMethods()) {
-            MethodList *methods = ghost->methods;
-            if (ghost->dtable != objc_get_uninstalled_dtable() && ghost->dtable != NULL) {
-                sarray_free(ghost->dtable);
-            }
-            while (methods != NULL) {
-                MethodList *tmp = methods->method_next;
-                tFree(methods);
-                methods = tmp;
-            }
-            tFree(ghost);
-        }
+        object_setClass(self, data->originalClass);
         TMutableArray *pendingMessages = [[TMutableArray alloc] init];
         for (id <TIterator> i = [data->messages iterator]; [i hasCurrent]; [i next]) {
             TMockMessage *msg = [i current];
@@ -402,12 +385,13 @@ static void verifyAndCleanupMocksFor(struct objc_object *self)
                 [pendingMessages addObject: msg];
             }
         }
+        // FIXME kann man die erzeugten Klassen irgendwie wieder loswerden?
+        // FIXME die leaken hier derzeit
         removeData(self);
         @try {
             if ([pendingMessages containsData]) {
                 @throw [TTestException exceptionWithFormat:
-                        @"The following messages were not sent: %@",
-                        pendingMessages];
+                        @"The following messages were not sent: %@", pendingMessages];
             }
         } @finally {
             [pendingMessages release];
@@ -416,7 +400,7 @@ static void verifyAndCleanupMocksFor(struct objc_object *self)
 }
 
 
-static void dealloc(id self, SEL sel)
+static void dealloc_imp(id self, SEL sel)
 {
     @try {
         verifyAndCleanupMocksFor(self);
@@ -426,9 +410,9 @@ static void dealloc(id self, SEL sel)
 }
 
 
-static Class class(id self, SEL sel)
+static Class class_imp(id self, SEL sel)
 {
-    return self->class_pointer->super_class;
+    return getData(self)->originalClass;
 }
 
 
@@ -456,41 +440,55 @@ void verifyAndCleanupMocks()
 }
 
 
-static void mock(struct objc_object *self, const char *file, int line)
+static Class recorderClass()
 {
-    _TMockData *data = getData(self);
+    static Class recorder = Nil;
+    if (recorder == Nil) {
+        Class root = objc_allocateClassPair(Nil, "TMockGhostRecorderRoot", 0);
+        objc_registerClassPair(root);
+        recorder = objc_allocateClassPair(root, "TMockGhostRecorder", 0);
+        addRecordMethods(recorder);
+        addRecordMethods(object_getClass(recorder));
+        objc_registerClassPair(recorder);
+    }
+    return recorder;
+}
+
+
+static Class createReplayerClass(_TMockData *data)
+{
+    TString *name = [TString stringWithFormat: @"TGhostReplayer_%s_%p",
+            class_getName(data->originalClass), data];
+    Class class = objc_allocateClassPair(data->originalClass, [name cString], 0);
+    class_addMethod(class, @selector(dealloc), (IMP)dealloc_imp, "v8@0:4");
+    class_addMethod(class, @selector(class), (IMP)class_imp, "#8@0:4");
+    objc_registerClassPair(class);
+    return class;
+}
+
+
+static void mock(id obj, const char *file, int line)
+{
+    _TMockData *data = getData(obj);
     if (data == NULL) {
-        Class old = self->class_pointer;
-        size_t classSize = sizeof(struct objc_class);
-        Class new = tAlloc(classSize);
-        memcpy(new, old, classSize);
-        new->super_class = old;
-        new->subclass_list = NULL;
-        new->sibling_class = NULL;
-        new->methods = NULL;
-        new->dtable = NULL;
-        __objc_install_premature_dtable(new);
-        if (object_is_instance(self)) {
-            registerMethod(new, @selector(dealloc), (IMP)dealloc);
-            registerMethod(new, @selector(class), (IMP)class);
+        data = newData(obj);
+        if (class_isMetaClass(data->originalClass)) {
+            data->rcvIsClass = YES;
         }
-        self->class_pointer = new;
-        data = newData(self);
+        data->originalClass = object_getClass(obj);
+        Class replayer = createReplayerClass(data);
+        data->replayerClass = data->rcvIsClass ? object_getClass(replayer) : replayer;
+        object_setClass(obj, data->replayerClass);
     }
     if (data->isRecording) {
         @throw [TTestException exceptionWithMessage: @"'mock' was called while already recording."];
     }
-    Class klazz = self->class_pointer;
-    data->superClass = klazz->super_class;
-    klazz->super_class = Nil;
-    data->methods = klazz->methods;
-    klazz->methods = recordMethods();
+    object_setClass(obj, data->rcvIsClass ? object_getClass(recorderClass()) : recorderClass());
     data->isRecording = YES;
     data->totallyReplaceMethod = NO;
     data->callCount = 1;
     data->file = file;
     data->line = line;
-    __objc_update_dispatch_table_for_class(klazz);
 }
 
 

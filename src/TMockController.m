@@ -8,7 +8,7 @@
 
 #pragma .h @class TMock, TMockMessage;
 
-#include <objc/objc-api.h>
+#include <objc/runtime.h>
 
 #include "TUnit/TMock.h"
 #include "TUnit/TMockMessage.h"
@@ -104,7 +104,7 @@
 
 - (TMock *)__newMock
 {
-    TMock *mock = class_create_instance([TMock class]);
+    TMock *mock = class_createInstance([TMock class], 0);
     TMockList *tmp = tAllocZero(sizeof(TMockList));
 
     mock->_mockListEntry = _mocks;
@@ -230,8 +230,7 @@
                 }
             }
         } else {
-            for (id <TIterator> i = [_messages iterator];
-                    [i hasCurrent] && msg == nil; [i next]) {
+            for (id <TIterator> i = [_messages iterator]; [i hasCurrent] && msg == nil; [i next]) {
                 msg = [[i current] checkForSel: sel receiver: mock andArgs: argFrame
                         addSimilarityTo: errors];
             }
