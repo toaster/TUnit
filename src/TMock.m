@@ -62,49 +62,48 @@ static inline void checkForResponsibility(TMock *self, SEL sel)
 }
 
 
-- (byte)byteForward: (SEL)sel : (arglist_t)argFrame
+// FIXME typForward abschaffen und durch forward/str_forward ersetzen
+// FIXME → Tests, dass kleinere Typen auch wirklich nicht mehr Daten an den Receiver liefern
+//         (Stichwort: untypisierte Selektoren)
+- (long long)byteForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotByteMsg: (SEL)sel withArgFrame: argFrame];
+    return [_controller mock: self gotCharMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 
 - (word)wordForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotWordMsg: (SEL)sel withArgFrame: argFrame];
+    return [_controller mock: self gotShortMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 
 - (dword)dwordForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotDwordMsg: (SEL)sel
-            withArgFrame: argFrame];
+    return [_controller mock: self gotIntMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 
 - (qword)qwordForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotQwordMsg: (SEL)sel
-            withArgFrame: argFrame];
+    return [_controller mock: self gotLongLongMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 
 - (float)floatForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotFloatMsg: (SEL)sel
-            withArgFrame: argFrame];
+    return [_controller mock: self gotFloatMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 
 - (double)doubleForward: (SEL)sel : (arglist_t)argFrame
 {
     checkForResponsibility(self, sel);
-    return [_controller mock: self gotDoubleMsg: (SEL)sel
-            withArgFrame: argFrame];
+    return [_controller mock: self gotDoubleMsg: (SEL)sel withArgFrame: argFrame];
 }
 
 

@@ -268,25 +268,32 @@
 
 #define GOT_MESSAGE(type, Type) - (type)mock: (TMock *)mock got##Type##Msg: (SEL)sel withArgFrame: (arglist_t)argFrame\
 {\
-    return [[self __mock: mock gotMsg: sel withArgFrame: argFrame]\
-            pop##Type##Result];\
+    return [[self __mock: mock gotMsg: sel withArgFrame: argFrame] pop##Type##Result];\
 }
 
 
-#pragma .h GOT_MESSAGE_H(byte, Byte);
-GOT_MESSAGE(byte, Byte);
+#pragma .h GOT_MESSAGE_H(char, Char);
+GOT_MESSAGE(char, Char);
 
 
-#pragma .h GOT_MESSAGE_H(word, Word);
-GOT_MESSAGE(word, Word);
+#pragma .h GOT_MESSAGE_H(short, Short);
+GOT_MESSAGE(short, Short);
 
 
-#pragma .h GOT_MESSAGE_H(dword, Dword);
-GOT_MESSAGE(dword, Dword);
+#pragma .h GOT_MESSAGE_H(int, Int);
+GOT_MESSAGE(int, Int);
 
 
-#pragma .h GOT_MESSAGE_H(qword, Qword);
-GOT_MESSAGE(qword, Qword);
+#pragma .h GOT_MESSAGE_H(long, Long);
+GOT_MESSAGE(long, Long);
+
+
+#pragma .h GOT_MESSAGE_H(long long, LongLong);
+GOT_MESSAGE(long long, LongLong);
+
+
+#pragma .h GOT_MESSAGE_H(void *, Ptr);
+GOT_MESSAGE(void *, Ptr);
 
 
 #pragma .h GOT_MESSAGE_H(float, Float);
@@ -297,18 +304,15 @@ GOT_MESSAGE(float, Float);
 GOT_MESSAGE(double, Double);
 
 
-- (void)mock: (TMock *)mock gotVoidMsg: (SEL)sel
-        withArgFrame: (arglist_t)argFrame
+- (void)mock: (TMock *)mock gotVoidMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
 {
     [[self __mock: mock gotMsg: sel withArgFrame: argFrame] popVoidResult];
 }
 
 
-- (retval_t)mock: (TMock *)mock gotBlockMsg: (SEL)sel
-        withArgFrame: (arglist_t)argFrame
+- (retval_t)mock: (TMock *)mock gotBlockMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
 {
-    return (retval_t)[[self __mock: mock gotMsg: sel withArgFrame: argFrame]
-            popDwordResult];
+    return (retval_t)[[self __mock: mock gotMsg: sel withArgFrame: argFrame] popPtrResult];
 }
 
 
@@ -322,11 +326,9 @@ GOT_MESSAGE(double, Double);
 
 
 #pragma .h #define RESULT_CONVENIENCE_ACCESSOR_H(type, Type)\
-#pragma .h - (void)set##Type##Result: (type)result\
-#pragma .h         andCallCount: (unsigned int)count;\
+#pragma .h - (void)set##Type##Result: (type)result andCallCount: (unsigned int)count;\
 #pragma .h - (void)expect: (type)dummy with##Type##Result: (type)result;\
-#pragma .h - (void)expect: (type)dummy with##Type##Result: (type)result\
-#pragma .h         andCallCount: (unsigned int)count;\
+#pragma .h - (void)expect: (type)dummy with##Type##Result: (type)result andCallCount: (unsigned int)count;\
 #pragma .h - (void)stub: (type)dummy with##Type##Result: (type)result;
 
 #pragma .h #define RESULT_ACCESSOR_H(type, Type)\
@@ -341,8 +343,7 @@ GOT_MESSAGE(double, Double);
 }; - (void)expect: (type)dummy with##Type##Result: (type)result\
 {\
     [self set##Type##Result: result];\
-}; - (void)expect: (type)dummy with##Type##Result: (type)result\
-        andCallCount: (unsigned int)count\
+}; - (void)expect: (type)dummy with##Type##Result: (type)result andCallCount: (unsigned int)count\
 {\
     [self set##Type##Result: result];\
     [self setCallCount: count];\
@@ -352,15 +353,17 @@ GOT_MESSAGE(double, Double);
     [self setCallCount: TUNIT_UNCHECKEDCALLCOUNT];\
 }
 
-#define RESULT_ACCESSOR(type, Type, pushType, castType) - (void)set##Type##Result: (type)result\
+#define _RESULT_ACCESSOR(type, Type, pushType, castType) - (void)set##Type##Result: (type)result\
 {\
     [[_messages lastObject] push##pushType##Result: (castType)result];\
 }; RESULT_CONVENIENCE_ACCESSOR(type, Type)
 
+#define RESULT_ACCESSOR(type, Type) _RESULT_ACCESSOR(type, Type, Type, type)
+
 
 - (void)setResult: result
 {
-    [[_messages lastObject] pushDwordResult: (dword)result];
+    [[_messages lastObject] pushPtrResult: result];
 }
 
 
@@ -369,36 +372,35 @@ RESULT_CONVENIENCE_ACCESSOR(id,);
 
 
 #pragma .h RESULT_ACCESSOR_H(char, Char);
-RESULT_ACCESSOR(char, Char, Byte, byte);
+RESULT_ACCESSOR(char, Char);
 
 
 #pragma .h RESULT_ACCESSOR_H(short, Short);
-RESULT_ACCESSOR(short, Short, Word, word);
+RESULT_ACCESSOR(short, Short);
 
 
 #pragma .h RESULT_ACCESSOR_H(int, Int);
-RESULT_ACCESSOR(int, Int, Dword, dword);
+RESULT_ACCESSOR(int, Int);
 
 
-// TODO Bei 64-bit-Maschinen Qword
 #pragma .h RESULT_ACCESSOR_H(const unsigned char *, UCPtr);
-RESULT_ACCESSOR(const unsigned char *, UCPtr, Dword, dword);
+_RESULT_ACCESSOR(const unsigned char *, UCPtr, Ptr, void *);
 
 
 #pragma .h RESULT_ACCESSOR_H(long long, LongLong);
-RESULT_ACCESSOR(long long, LongLong, Qword, qword);
+RESULT_ACCESSOR(long long, LongLong);
 
 
 #pragma .h RESULT_ACCESSOR_H(float, Float);
-RESULT_ACCESSOR(float, Float, Float, float);
+RESULT_ACCESSOR(float, Float);
 
 
 #pragma .h RESULT_ACCESSOR_H(double, Double);
-RESULT_ACCESSOR(double, Double, Double, double);
+RESULT_ACCESSOR(double, Double);
 
 
 #pragma .h RESULT_ACCESSOR_H(BOOL, Bool);
-RESULT_ACCESSOR(BOOL, Bool, Byte, byte);
+_RESULT_ACCESSOR(BOOL, Bool, Char, char);
 
 
 #pragma .h #undef RESULT_ACCESSOR_H

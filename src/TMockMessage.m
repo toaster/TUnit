@@ -22,12 +22,8 @@
 #pragma .h typedef union _TMockVariable TMockVariable;
 
 union _TMockVariable {
-    byte aByte;
-    word aWord;
-    dword aDword;
-    qword aQword;
-    float aFloat;
-    double aDouble;
+    long long value;
+    // TODO union/struct/array
     TString *aCharArray;
 };
 
@@ -60,64 +56,51 @@ struct _TMockResult {
 }
 
 
-static inline TString *_byteString(byte aByte)
+static inline TString *_charString(char c)
 {
-    return [TString stringWithFormat: @"(char)0x%02x", aByte];
+    return [TString stringWithFormat: @"(char)0x%02x", c & 0xFF];
 }
 
 
-static inline TString *_wordString(word aWord, BOOL isSigned)
+static inline TString *_shortString(short s, BOOL isSigned)
 {
-    return [TString stringWithFormat: (isSigned ? @"(short)%d" : @"(short)%u"),
-            aWord];
+    return [TString stringWithFormat: (isSigned ? @"(short)%d" : @"(short)%u"), s];
 }
 
 
-static inline TString *_dwordString(dword aDword, char type)
+static inline TString *_intString(int i, BOOL isSigned)
 {
-    TString *result = nil;
-
-    switch (type) {
-        case _C_CLASS:
-            result = [(Class)aDword className];
-            break;
-        case _C_PTR:
-        case _C_ATOM:
-        case _C_CHARPTR:
-            result = [TString stringWithFormat: @"0x%08x", aDword];
-            break;
-        case _C_INT:
-        case _C_LNG:
-            result = [TString stringWithFormat: @"%i", aDword];
-            break;
-        case _C_UINT:
-        case _C_ULNG:
-            result = [TString stringWithFormat: @"%u", aDword];
-            break;
-        default:
-            // never happens
-            break;
-    }
-    return result;
+    return [TString stringWithFormat: (isSigned ? @"(int)%i" : @"(int)%u"), i];
 }
 
 
-static inline TString *_qwordString(word aQword, BOOL isSigned)
+static inline TString *_longString(long l, BOOL isSigned)
 {
-    return [TString stringWithFormat: (isSigned ? @"(long long)%lld" :
-            @"(long long)%llu"), aQword];
+    return [TString stringWithFormat: (isSigned ? @"(long)%ld" : @"(long)%lu"), l];
 }
 
 
-static inline TString *_floatString(float aFloat)
+static inline TString *_longLongString(long long ll, BOOL isSigned)
 {
-    return [TString stringWithFormat: @"(float)%f", aFloat];
+    return [TString stringWithFormat: (isSigned ? @"(long long)%lld" : @"(long long)%llu"), ll];
 }
 
 
-static inline TString *_doubleString(double aDouble)
+static inline TString *_ptrString(void *p)
 {
-    return [TString stringWithFormat: @"(double)%f", aDouble];
+    return [TString stringWithFormat: @"%p", p];
+}
+
+
+static inline TString *_floatString(float f)
+{
+    return [TString stringWithFormat: @"(float)%f", f];
+}
+
+
+static inline TString *_doubleString(double d)
+{
+    return [TString stringWithFormat: @"(double)%lf", d];
 }
 
 
@@ -133,8 +116,7 @@ static inline BOOL _isTMock(id object)
 static inline TString *_idString(id object)
 {
     if (_isTMock(object)) {
-        return [TString stringWithFormat: @"<%@>",
-               [TMockController descriptionFor: (TMock *)object]];
+        return [TString stringWithFormat: @"<%@>", [TMockController descriptionFor: (TMock *)object]];
 // FIXME: kommt von ip - testen & Test bauen, ob das irgendwie sinnvoll ist, oder ob die
 // Default-Ausgabe schöner ist.
 //    } else if ([Protocol class] == class) {
@@ -146,7 +128,7 @@ static inline TString *_idString(id object)
 }
 
 
-static inline TString *_charArrayString(unsigned char *array, unsigned size)
+static inline TString *_charArrayString(char *array, unsigned size)
 {
     TStringOutputStream *s = [TStringOutputStream stream];
     [s writeFormat: @"(char[%u])", size];
@@ -159,8 +141,13 @@ static inline TString *_charArrayString(unsigned char *array, unsigned size)
 
 static inline TString *_selString(SEL sel)
 {
-    return [TString stringWithFormat: @"@selector(%@)",
-            [TUtils stringFromSelector: sel]];
+    return [TString stringWithFormat: @"@selector(%@)", [TUtils stringFromSelector: sel]];
+}
+
+
+static inline TString *_classString(Class class)
+{
+    return [TString stringWithFormat: @"@class(%@)", [TUtils stringFromClass: class]];
 }
 
 
@@ -180,8 +167,8 @@ static inline void methodFromDescription(struct objc_method_description *desc, s
 
 
 static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
-        TMockVariable **values, TMutableArray *argStrings, BOOL validate,
-        int argCount, TMockVariable *args, BOOL *skipCheck)
+        TMockVariable **values, TMutableArray *argStrings, BOOL validate, int argCount,
+        TMockVariable *args, BOOL *skipCheck)
 {
     unsigned int result = 0;
     BOOL messageIsValid = NO;
@@ -209,52 +196,40 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
     } else {
         method = class_getClassMethod(receiver, sel);
     }
-//[TUserIO eprintln: @"method type encoding: %s", method_getTypeEncoding(method)];
     if (method != NULL) {
+        char *argFrameArgs = encoding_getArguments(method, argFrame);
         messageIsValid = YES;
         result = method_getNumberOfArguments(method);
         if (values != NULL) {
             *values = (TMockVariable *)tAllocZero(result * sizeof(TMockVariable));
         }
         for (int i = 0; i < result; ++i) {
-            char encoding[20];
-            char type;
-            char *cur = encoding;
-
-            method_getArgumentType(method, i, encoding, 20);
-            if (*cur == _C_CONST) {
-                cur++;
-            }
-            type = *cur;
-            // FIXME das ist unvollständig. Zwischen '^' (_C_PTR) und dem Offset steht zum beispiel
-            // auch manchmal (…) (_C_ARY_B … _C_ARY_E) wobei '…' Zahlen enthalten kann.
-            // skip modifiers like _C_VOID or _C_CONST up to offset
-            while (!isdigit(*++cur));
-//[TUserIO eprintln: @"arg type+off for %d: %c, %s", i, type, cur];
-            const char *arg = argFrame->arg_ptr + atoi(cur);
+            char *typeString = method_copyArgumentType(method, i);
+            int offset = encoding_getArgumentOffset(typeString);
+            char type = encoding_getType(typeString);
+            const char *arg = argFrameArgs + offset;
+            free(typeString);
             if (arg == NULL) {
                 break;
             }
             BOOL isValid = argCount > i;
             switch (type) {
-                // Das paßt für i386 -> andere Architekturen -> feinere
-                // Behandlung
                 case _C_CHR:
                 case _C_UCHR:
-                    [argStrings addObject: _byteString(*arg)];
+                    [argStrings addObject: _charString(*arg)];
                     if (!validate) {
-                        (*values)[i].aByte = *arg;
+                        (*values)[i].value = *arg;
                     } else if (isValid) {
-                        isValid = (*arg == args[i].aByte);
+                        isValid = (*arg == args[i].value);
                     }
                     break;
                 case _C_SHT:
                 case _C_USHT:
-                    [argStrings addObject: _wordString(*((word *)arg), type == _C_SHT)];
+                    [argStrings addObject: _shortString(*((short *)arg), type == _C_SHT)];
                     if (!validate) {
-                        (*values)[i].aWord = *((word *)arg);
+                        (*values)[i].value = *((short *)arg);
                     } else if (isValid) {
-                        isValid = (*((word *)arg) == args[i].aWord);
+                        isValid = (*((short *)arg) == args[i].value);
                     }
                     break;
                 case _C_ID:
@@ -262,12 +237,12 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
                         [argStrings addObject: _idString(*((id *)arg))];
                     }
                     if (!validate) {
-                        (*values)[i].aDword = *((dword *)arg);
+                        (*values)[i].value = (size_t)*((id *)arg);
                     } else if (isValid && i > 0) {
                         // arg 0 is the receiver -> maybe a mock that must not get a message here.
                         // It's validity has already been approved.
                         id value = *((id *)arg);
-                        id expectedValue = (id)(args[i].aDword);
+                        id expectedValue = (id)((size_t)args[i].value);
 
                         isValid = (value == expectedValue) || [value isEqual: expectedValue];
 // FIXME: das kommt von ip - Nutzen verstehen, testen und ggf. einbauen
@@ -334,66 +309,86 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
                     if (i > 1) {
                         [argStrings addObject: _selString(*((SEL *)arg))];
                         if (!validate) {
-                            (*values)[i].aDword = *((dword *)arg);
+                            (*values)[i].value = (size_t)*((SEL *)arg);
                         } else if (isValid) {
-                            isValid = sel_eq(*((SEL *)arg), (SEL)(args[i].aDword));
+                            isValid = sel_eq(*((SEL *)arg), (SEL)((size_t)args[i].value));
                         }
                     }
                     break;
                 case _C_CLASS:
+                    [argStrings addObject: _classString(*((Class *)arg))];
+                    if (!validate) {
+                        (*values)[i].value = (size_t)*((Class *)arg);
+                    } else if (isValid && i > 1) {
+                        isValid = ((size_t)*((Class *)arg) == args[i].value);
+                    }
+                    break;
                 case _C_PTR:
-                case _C_ATOM:
                 case _C_CHARPTR:
+                    [argStrings addObject: _ptrString(*((void **)arg))];
+                    if (!validate) {
+                        (*values)[i].value = (size_t)*((void **)arg);
+                    } else if (isValid && i > 1) {
+                        isValid = ((size_t)*((void **)arg) == args[i].value);
+                    }
+                    break;
                 case _C_INT:
                 case _C_UINT:
+                    [argStrings addObject: _intString(*((int *)arg), type == _C_INT)];
+                    if (!validate) {
+                        (*values)[i].value = *((int *)arg);
+                    } else if (isValid && i > 1) {
+                        isValid = (*((int *)arg) == args[i].value);
+                    }
+                    break;
                 case _C_LNG:
                 case _C_ULNG:
-                    [argStrings addObject: _dwordString(*((dword *)arg), type)];
+                    [argStrings addObject: _longString(*((long *)arg), type)];
                     if (!validate) {
-                        (*values)[i].aDword = *((dword *)arg);
+                        (*values)[i].value = *((long *)arg);
                     } else if (isValid && i > 1) {
-                        isValid = (*((dword *)arg) == args[i].aDword);
+                        isValid = (*((long *)arg) == args[i].value);
                     }
                     break;
                 case _C_LNG_LNG:
                 case _C_ULNG_LNG:
-                    [argStrings addObject: _qwordString(*((qword *)arg), type == _C_LNG_LNG)];
+                    [argStrings addObject: _longLongString(*((long long *)arg), type == _C_LNG_LNG)];
                     if (!validate) {
-                        (*values)[i].aQword = *((qword *)arg);
+                        (*values)[i].value = *((long long *)arg);
                     } else if (isValid) {
-                        isValid = (*((qword *)arg) == args[i].aQword);
+                        isValid = (*((long long *)arg) == args[i].value);
                     }
                     break;
                 case _C_FLT:
                     [argStrings addObject: _floatString(*((float *)arg))];
                     if (!validate) {
-                        (*values)[i].aFloat = *((float *)arg);
+                        (*values)[i].value = *((long long *)&*((float *)arg));
                     } else if (isValid) {
-                        isValid = (*((float *)arg) == args[i].aFloat);
+                        isValid = (*((float *)arg) == *((float *)&args[i].value));
                     }
                     break;
                 case _C_DBL:
                     [argStrings addObject: _doubleString(*((double *)arg))];
                     if (!validate) {
-                        (*values)[i].aDouble = *((double *)arg);
+                        (*values)[i].value = *((long long *)&*((double *)arg));
                     } else if (isValid) {
-                        isValid = (*((double *)arg) == args[i].aDouble);
+                        isValid = (*((double *)arg) == *((double *)&args[i].value));
                     }
                     break;
+                // FIXME beginnen Arrays wirklich mit _C_ARY_B oder doch mit _C_PTR → evaluieren
+                // FIXME auf jeden Fall können sie mit _C_CONST beginnen :)
                 case _C_ARY_B:
-                    {
+                    /*{
+                        // FIXME das passt noch nicht
                         char *end = strchr(cur, _C_ARY_E);
                         char elementType = *(end - 1);
-                        // FIXME das passt noch nicht
                         if (elementType == _C_CHR || elementType == _C_UCHR) {
                             unsigned arraySize = 0;
                             for (int j = 0; j < end - cur - 2; ++j) {
                                 arraySize += (*(end - 2 - j) - '0') * pow(10, j);
                             }
-                            [argStrings addObject:
-                                    _charArrayString(*(unsigned char **)arg, arraySize)];
-                            TString *value = [TString stringWithCString: *(char **)arg
-                                    length: arraySize];
+                            [argStrings addObject: _charArrayString(*(char **)arg, arraySize)];
+                            TString *value = [TString stringWithCString: *(char **)arg length: arraySize];
                             if (!validate) {
                                 (*values)[i].aCharArray = value;
                             } else {
@@ -403,7 +398,7 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
                         } else {
                             // Other array types are not supported yet.
                         }
-                    }
+                    }*/
                 // Other block parameters are not supported yet.
                 case _C_UNION_B:
                 case _C_STRUCT_B:
@@ -419,10 +414,8 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
                 case _C_UNION_E:
                 case _C_STRUCT_E:
                 default:
-                    @throw [TTestException
-                            exceptionWithFormat: @"Invalid parameter type "
-                            @"'%c' for forwarded message '%@' parameter %d.",
-                            type, [TUtils stringFromSelector: sel], i];
+                    @throw [TTestException exceptionWithFormat: @"Invalid parameter type '%c' "
+                            @"for forwarded message '%@' parameter %d.", type, [TUtils stringFromSelector: sel], i];
                     isValid = NO;
                     break;
             }
@@ -433,15 +426,14 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
                 messageIsValid = NO;
             }
         }
+        free(argFrameArgs);
     } else if (values != NULL) {
         *values = NULL;
     }
     if (validate && argCount != result) {
-        @throw [TTestException exceptionWithFormat: @"Invalid argument count "
-                @"%d (should be %d) for message '%@' to %@.", result, argCount,
-                [TUtils stringFromSelector: sel], _idString(receiver)];
+        @throw [TTestException exceptionWithFormat: @"Invalid argument count %d (should be %d) "
+                @"for message '%@' to %@.", result, argCount, [TUtils stringFromSelector: sel], _idString(receiver)];
     }
-//[TUserIO eprintln: @"argCount for %@: %d", [TUtils stringFromSelector: sel], result];
     return validate ? messageIsValid : result;
 }
 
@@ -490,8 +482,7 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
     _sel = sel;
     _receiver = receiver;
     _argStrings = [[TMutableArray array] retain];
-    _argCount = _parameterValues(receiver, sel, argFrame, &_args, _argStrings,
-            NO, 0, NULL, NULL);
+    _argCount = _parameterValues(receiver, sel, argFrame, &_args, _argStrings, NO, 0, NULL, NULL);
     if (_argCount > 0) {
         _skipCheck = (BOOL *)tAllocZero(_argCount * sizeof(BOOL));
     }
@@ -566,14 +557,14 @@ static TMutableArray *__orderedMessages = nil;
 #define RESULT_ACCESSOR(type, Type) - (void)push##Type##Result: (type)result\
 {\
     [self __newResult];\
-    _lastResult->value.a##Type = result;\
+    _lastResult->value.value = *((long long *)&result);\
 }; - (type)pop##Type##Result\
 {\
     type result = (type)0;\
     TMockResult *r = [self __popResult];\
 \
     if (r != NULL) {\
-        result = r->value.a##Type;\
+        result = *((type *)&r->value.value);\
     }\
     return result;\
 }
@@ -585,20 +576,28 @@ static TMutableArray *__orderedMessages = nil;
 }
 
 
-#pragma .h RESULT_ACCESSOR_H(byte, Byte);
-RESULT_ACCESSOR(byte, Byte);
+#pragma .h RESULT_ACCESSOR_H(char, Char);
+RESULT_ACCESSOR(char, Char);
 
 
-#pragma .h RESULT_ACCESSOR_H(word, Word);
-RESULT_ACCESSOR(word, Word);
+#pragma .h RESULT_ACCESSOR_H(short, Short);
+RESULT_ACCESSOR(short, Short);
 
 
-#pragma .h RESULT_ACCESSOR_H(dword, Dword);
-RESULT_ACCESSOR(dword, Dword);
+#pragma .h RESULT_ACCESSOR_H(int, Int);
+RESULT_ACCESSOR(int, Int);
 
 
-#pragma .h RESULT_ACCESSOR_H(qword, Qword);
-RESULT_ACCESSOR(qword, Qword);
+#pragma .h RESULT_ACCESSOR_H(long, Long);
+RESULT_ACCESSOR(long, Long);
+
+
+#pragma .h RESULT_ACCESSOR_H(long long, LongLong);
+RESULT_ACCESSOR(long long, LongLong);
+
+
+#pragma .h RESULT_ACCESSOR_H(void *, Ptr);
+RESULT_ACCESSOR(void *, Ptr);
 
 
 #pragma .h RESULT_ACCESSOR_H(float, Float);
@@ -681,15 +680,13 @@ RESULT_ACCESSOR(double, Double);
 - (BOOL)hasUnlimitedCallCount
 {
     return _nextResult != NULL &&
-            (_nextResult->count == TUNIT_UNLIMITEDCALLCOUNT ||
-            _nextResult->count == TUNIT_UNCHECKEDCALLCOUNT);
+            (_nextResult->count == TUNIT_UNLIMITEDCALLCOUNT || _nextResult->count == TUNIT_UNCHECKEDCALLCOUNT);
 }
 
 
 - (BOOL)wantsCallCountChecking
 {
-    return _nextResult != NULL &&
-            _nextResult->count != TUNIT_UNCHECKEDCALLCOUNT;
+    return _nextResult != NULL && _nextResult->count != TUNIT_UNCHECKEDCALLCOUNT;
 }
 
 
@@ -707,8 +704,7 @@ RESULT_ACCESSOR(double, Double);
 
 - (BOOL)isForArgs: (arglist_t)argFrame
 {
-    return (BOOL)_parameterValues(_receiver, _sel, argFrame, NULL, nil, YES,
-            _argCount, _args, _skipCheck);
+    return (BOOL)_parameterValues(_receiver, _sel, argFrame, NULL, nil, YES, _argCount, _args, _skipCheck);
 }
 
 
@@ -810,12 +806,10 @@ RESULT_ACCESSOR(double, Double);
                         && [[self class] consumeIfOrdered: firstOrdered]) {
                     return firstOrdered;
                 } else {
-                    @throw [TTestException
-                            exceptionWithFormat: @"Ordered message %@ was send out of order", self];
+                    @throw [TTestException exceptionWithFormat: @"Ordered message %@ was send out of order", self];
                 }
             } else if ([self wantsNotToBeCalled]) {
-                @throw [TTestException
-                        exceptionWithFormat: @"Message %@ which should not be sent was sent", self];
+                @throw [TTestException exceptionWithFormat: @"Message %@ which should not be sent was sent", self];
             } else {
                 [similars addObject: self];
             }
@@ -830,15 +824,13 @@ RESULT_ACCESSOR(double, Double);
 - ordered
 {
     if (_lastResult->count == 0) {
-        @throw [TTestException exceptionWithFormat: @"Unexpected message %@ cannot be ordered",
-                self];
+        @throw [TTestException exceptionWithFormat: @"Unexpected message %@ cannot be ordered", self];
     }
     if (![self wantsCallCountChecking]) {
         @throw [TTestException exceptionWithFormat: @"Stubbed message %@ cannot be ordered", self];
     }
     if ([self hasUnlimitedCallCount]) {
-        @throw [TTestException exceptionWithFormat: @"Unlimited message %@ cannot be ordered",
-                self];
+        @throw [TTestException exceptionWithFormat: @"Unlimited message %@ cannot be ordered", self];
     }
     [[self class] addOrderedMessage: self];
     _isOrdered = YES;

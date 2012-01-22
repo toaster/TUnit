@@ -125,7 +125,7 @@
 }
 
 
-- (int)testMethod: (int)param
+- (size_t)testMethod: (size_t)param
 {
     return param + 3;
 }

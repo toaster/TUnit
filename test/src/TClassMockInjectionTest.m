@@ -27,14 +27,16 @@
 {
     // normales Verhalten sicherstellen
     ASSERTEQUALSINT(7, [_class testClassMethod: 3]);
-    [(Class)[[_class mock] testClassMethod: 3] andReturnInt: 666];
+    [[_class mock] testClassMethod: 3];
+    [_class andReturnInt: 666];
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
 }
 
 
 - (void)testNormalClassMockingAMessageReturnsToNormalBehaviourAfterReceivingMockedCall
 {
-    [(Class)[[_class mock] testClassMethod: 3] andReturnInt: 666];
+    [[_class mock] testClassMethod: 3];
+    [_class andReturnInt: 666];
     [_class testClassMethod: 3];
     ASSERTEQUALSINT(7, [_class testClassMethod: 3]);
 }
@@ -49,7 +51,8 @@
 
 - (void)testIntMethodCanBeMocked
 {
-    [(id)[[_class mock] intClassMethod] andReturnInt: 666];
+    [[_class mock] intClassMethod];
+    [_class andReturnInt: 666];
     ASSERTEQUALSINT(666, [_class intClassMethod]);
 }
 
@@ -99,7 +102,8 @@
 
 - (void)testStubbingAMethodLastsForever
 {
-    [(id)[[_class stub] testClassMethod: 3] andReturnInt: 666];
+    [[_class stub] testClassMethod: 3];
+    [_class andReturnInt: 666];
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
@@ -109,7 +113,7 @@
 
 - (void)testMockCountCanBeSet
 {
-    [[(id)[[_class mock] testClassMethod: 3] andReturnInt: 666] receiveTimes: 3];
+    [[_class mock] testClassMethod: 3]; [[_class andReturnInt: 666] receiveTimes: 3];
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
     ASSERTEQUALSINT(666, [_class testClassMethod: 3]);
@@ -133,7 +137,7 @@
 
 - (void)testVerifyAndCleanupMocksShouldRaiseAnExceptionIfNotAllMockedMethodsWereCalled
 {
-    [(id)[[_class mock] testClassMethod: 3] andReturnInt: 666];
+    [[_class mock] testClassMethod: 3]; [_class andReturnInt: 666];
     [[[_class mock] classMethodReturningArgument: _class] andReturn: @"hui"];
     [_class testClassMethod: 3];
     BOOL exceptionCaught = NO;
@@ -148,7 +152,7 @@
 
 - (void)testVerifyAndCleanupMocksShouldNotRaiseAnExceptionIfAllMockedMethodsWereCalled
 {
-    [(id)[[_class mock] testClassMethod: 3] andReturnInt: 666];
+    [[_class mock] testClassMethod: 3]; [_class andReturnInt: 666];
     [[[_class mock] classMethodReturningArgument: _class] andReturn: @"hui"];
     [_class testClassMethod: 3];
     [_class classMethodReturningArgument: _class];
@@ -158,7 +162,7 @@
 
 - (void)testVerifyAndCleanupMocksShouldNotRaiseAnExceptionIfAllMockedMethodsWereStubbed
 {
-    [(id)[[_class stub] testClassMethod: 3] andReturnInt: 666];
+    [[_class stub] testClassMethod: 3]; [_class andReturnInt: 666];
     [[[_class stub] classMethodReturningArgument: _class] andReturn: @"hui"];
     verifyAndCleanupMocks();
 }
@@ -166,7 +170,7 @@
 
 - (void)testStubbedMethodsShouldBeRemovedAfterVerifyAndCleanupMocks
 {
-    [(id)[[_class stub] testClassMethod: 3] andReturnInt: 666];
+    [[_class stub] testClassMethod: 3]; [_class andReturnInt: 666];
     [[[_class stub] classMethodReturningArgument: _class] andReturn: @"hui"];
     verifyAndCleanupMocks();
     ASSERTEQUALSINT(7, [_class testClassMethod: 3]);

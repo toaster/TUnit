@@ -49,7 +49,7 @@ typedef struct __TMockData {
 static _TLinkedTable *__lookup(_TCDictionary *dict, void *key, unsigned int *idx)
 {
     if (dict->tableSize > 0) {
-        unsigned int i = (unsigned int)key % dict->tableSize;
+        unsigned int i = (unsigned long)key % dict->tableSize;
         _TLinkedTable *list;
         if (idx != NULL) {
             *idx = i;
@@ -92,7 +92,7 @@ void _set(_TCDictionary *dict, void *key, void *value)
             _TLinkedTable *list;
             _TLinkedTable *next = NULL;
             for (list = dict->lists[i]; list != NULL; list = next) {
-                unsigned int newIndex = (unsigned int)list->key % newCapacity;
+                unsigned int newIndex = (unsigned long)list->key % newCapacity;
                 next = list->next;
                 list->next = newLists[newIndex];
                 newLists[newIndex] = list;
@@ -199,9 +199,8 @@ static id replay(id obj, SEL sel, ...)
             }
         } else {
             Method method = class_getInstanceMethod(data->originalClass, sel);
-            // FIXME type-Encoding ist nicht zwangsweise 1 Byte (z.B. block-returnings haben '^v')
             __builtin_return(__builtin_apply((apply_t)method_getImplementation(method), argFrame,
-                    atoi(method_getTypeEncoding(method) + 1)));
+                    encoding_getFrameSize(method_getTypeEncoding(method))));
         }
     } else {
         BOOL isByteReturn = NO;
@@ -209,37 +208,54 @@ static id replay(id obj, SEL sel, ...)
         // popResult aber _vorher_. -> Tests!
         // FIXME Apple Runtime hat keine typisierten Selektoren
         //       → aber man kann sich die Method von der Klasse holen, die auch Typen hat.
-        char type = sel->sel_types != NULL ? sel->sel_types[0] : _C_ID;
+        char type = sel->sel_types != NULL ? encoding_getType(sel->sel_types) : _C_ID;
         switch (type) {
             case _C_CHR:
             case _C_UCHR:
-                __byteResult = [msg popByteResult];
+                // FIXME test
+                __byteResult = [msg popCharResult];
                 isByteReturn = YES;
+                break;
+            case _C_SHT:
+            case _C_USHT:
+                // FIXME test
+                result = (id)((size_t)[msg popShortResult]);
+                break;
+            case _C_INT:
+            case _C_UINT:
+                // FIXME test
+                result = (id)((size_t)[msg popIntResult]);
+                break;
+            case _C_LNG:
+            case _C_ULNG:
+                // FIXME test
+                result = (id)((size_t)[msg popLongResult]);
+                break;
+            case _C_LNG_LNG:
+            case _C_ULNG_LNG:
+                // FIXME test
+                result = (id)((size_t)[msg popLongLongResult]);
                 break;
             case _C_ID:
             case _C_CLASS:
             case _C_SEL:
             case _C_PTR:
             case _C_CHARPTR:
-            case _C_ATOM:
-            case _C_INT:
-            case _C_UINT:
-            case _C_LNG:
-            case _C_ULNG:
-            case _C_CONST:
-                result = (id)[msg popDwordResult];
+                // FIXME test
+                result = [msg popPtrResult];
                 break;
             case _C_VOID:
-            case _C_ONEWAY:
                 [msg popVoidResult];
                 break;
             default:
-                @throw [TTestException
-                        exceptionWithFormat: @"Unsupported return type '%c' mocked.", type];
+                @throw [TTestException exceptionWithFormat: @"Unsupported return type '%c' mocked.", type];
         }
         if ([msg exception] != nil) {
             @throw [msg exception];
         }
+        // FIXME braucht man das wirklich? → Tests?
+        // FIXME wenn ja, braucht man das auch für short, int (64bit), long long (32bit), float
+        // (64bit) und double (32bit)
         if (isByteReturn) {
             __builtin_return(__builtin_apply((apply_t)byteReturner, argFrame, 0));
         }
@@ -275,17 +291,31 @@ static id replay(id obj, SEL sel, ...)
 #define RETURNSELF_FORWARD_MESSAGE(type) _FORWARD_MESSAGE(type, 0)
 
 
+// FIXME word-Typ-fowarder loswerden und Pointer ohne ifdef
+// FIXME vllt. kann man ja doch alle ausser void self returnen lassen, wenn die forwarder immer id
+// liefern (siehe types unten)
+
+
 RETURNSELF_FORWARD_MESSAGE(byte)
 
 
 RETURNSELF_FORWARD_MESSAGE(word)
 
+#ifdef __LP64__
+
+RETURNSELF_FORWARD_MESSAGE(dword)
+
+
+FORWARD_MESSAGE(qword)
+
+#else
 
 FORWARD_MESSAGE(dword)
 
 
 RETURNSELF_FORWARD_MESSAGE(qword)
 
+#endif
 
 RETURNSELF_FORWARD_MESSAGE(float)
 
@@ -301,6 +331,8 @@ RETURNSELF_FORWARD_MESSAGE(block)
 
 static void addRecordMethods(Class class)
 {
+    // FIXME stimmen die größen? müsste das für 64bit nicht alles anders aussehen? → Berechner
+    // (MAKRO) bauen!
     class_addMethod(class,
             sel_registerName("byteForward::"), (IMP)byteForward, "C16@0:4:8^(arglist=*[4c])12");
     class_addMethod(class,
@@ -318,58 +350,6 @@ static void addRecordMethods(Class class)
     class_addMethod(class,
             sel_registerName("blockForward::"), (IMP)blockForward, "^v16@0:4:8^(arglist=*[4c])12");
 }
-
-
-//static MethodList *recordMethods()
-//{
-//    static MethodList *methods = NULL;
-//    if (methods == NULL) {
-//        methods = tAlloc(sizeof(MethodList) + 8 * sizeof(Method));
-//        methods->method_next = NULL;
-//        methods->method_count = 8;
-//
-//        Method *method = &methods->method_list[0];
-//        method->method_types = "C16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("byteForward::", method->method_types);
-//        method->method_imp = (IMP)byteForward;
-//
-//        method = &methods->method_list[1];
-//        method->method_types = "S16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("wordForward::", method->method_types);
-//        method->method_imp = (IMP)wordForward;
-//
-//        method = &methods->method_list[2];
-//        method->method_types = "I16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("dwordForward::", method->method_types);
-//        method->method_imp = (IMP)dwordForward;
-//
-//        method = &methods->method_list[3];
-//        method->method_types = "Q16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("qwordForward::", method->method_types);
-//        method->method_imp = (IMP)qwordForward;
-//
-//        method = &methods->method_list[4];
-//        method->method_types = "f16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("floatForward::", method->method_types);
-//        method->method_imp = (IMP)floatForward;
-//
-//        method = &methods->method_list[5];
-//        method->method_types = "d16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("doubleForward::", method->method_types);
-//        method->method_imp = (IMP)doubleForward;
-//
-//        method = &methods->method_list[6];
-//        method->method_types = "v16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("voidForward::", method->method_types);
-//        method->method_imp = (IMP)voidForward;
-//
-//        method = &methods->method_list[7];
-//        method->method_types = "^v16@0:4:8^(arglist=*[4c])12";
-//        method->method_name = sel_register_typed_name("blockForward::", method->method_types);
-//        method->method_imp = (IMP)blockForward;
-//    }
-//    return methods;
-//}
 
 
 static void verifyAndCleanupMocksFor(struct objc_object *self)
@@ -569,70 +549,58 @@ static void _shouldNotReceive(void *self, const char *file, int line)
 }
 
 
-static void setDwordResult(void *self, dword result)
-{
-    [[getData(self)->messages lastObject] pushDwordResult: result];
-}
-
-
 + (Class)andReturnInt: (int)result
 {
-    setDwordResult(self, result);
+    [[getData(self)->messages lastObject] pushIntResult: result];
     return self;
 }
 
 
 - andReturnInt: (int)result
 {
-    setDwordResult(self, result);
+    [[getData(self)->messages lastObject] pushIntResult: result];
     return self;
 }
 
 
 + (Class)andReturn: (const void *)result
 {
-    setDwordResult(self, (dword)result);
+    [[getData(self)->messages lastObject] pushPtrResult: (void *)result];
     return self;
 }
 
 
 - andReturn: (const void *)result
 {
-    setDwordResult(self, (dword)result);
+    [[getData(self)->messages lastObject] pushPtrResult: (void *)result];
     return self;
-}
-
-
-static void setByteResult(void *self, byte result)
-{
-    [[getData(self)->messages lastObject] pushByteResult: result];
 }
 
 
 + (Class)returnBool: (BOOL)result
 {
-    setByteResult(self, (byte)result);
+    [[getData(self)->messages lastObject] pushCharResult: result];
     return self;
 }
 
 
 - returnBool: (BOOL)result
 {
-    setByteResult(self, (byte)result);
+    [[getData(self)->messages lastObject] pushCharResult: result];
     return self;
 }
 
 
 + (Class)andReturnBool: (BOOL)result
 {
-    setByteResult(self, (byte)result);
+    [[getData(self)->messages lastObject] pushCharResult: result];
     return self;
 }
 
 
 - andReturnBool: (BOOL)result
 {
-    setByteResult(self, (byte)result);
+    [[getData(self)->messages lastObject] pushCharResult: result];
     return self;
 }
 

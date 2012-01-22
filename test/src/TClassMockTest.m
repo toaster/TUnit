@@ -1,5 +1,5 @@
 //
-// (C) Copyright Tilo Prütz
+// (C) Copyright Tilo PrÃ¼tz
 //
 
 #include "TClassMockTest.h"
@@ -9,6 +9,7 @@
 #pragma .h @class TMockTestClass;
 
 #include "TMockTestClass.h"
+#include <objc/runtime.h>
 
 
 @implementation TClassMockTest:TTestCase
@@ -21,8 +22,7 @@
 - (void)prepare
 {
     _controller = [TMockController mockController];
-    _mock = (TMockTestClass *)[_controller
-            mockForClass: [TMockTestClass class]];
+    _mock = (TMockTestClass *)[_controller mockForClass: [TMockTestClass class]];
 }
 
 
@@ -45,9 +45,9 @@
 - (void)testCharMethod
 {
     [_mock charMethod];
-    [_controller setCharResult: 'ü'];
+    [_controller setCharResult: '\xf3'];
     [_controller replay];
-    ASSERT([_mock charMethod] == 'ü');
+    ASSERT([_mock charMethod] == '\xf3');
 }
 
 

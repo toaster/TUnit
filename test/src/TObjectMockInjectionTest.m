@@ -49,7 +49,8 @@
 
 - (void)testIntMethodCanBeMocked
 {
-    [(id)[[_obj mock] intMethod] andReturnInt: 666];
+    [[_obj mock] intMethod];
+    [_obj andReturnInt: 666];
     ASSERTEQUALSINT(666, [_obj intMethod]);
 }
 
@@ -340,9 +341,9 @@
 - (void)testMethodsCanBeExpectedOrderedWithDifferentResultsAndOtherCallsBetweenThem
 {
     [[[[_obj shouldReceive] methodReturningArgument: @"1"] ordered] andReturn: @"1"];
-    [[(id)[[_obj shouldReceive] intMethod] ordered] andReturnInt: 123];
+    [[_obj shouldReceive] intMethod]; [[_obj ordered] andReturnInt: 123];
     [[[[_obj shouldReceive] methodReturningArgument: @"1"] ordered] andReturn: @"3"];
-    [[(id)[[_obj shouldReceive] intMethod] ordered] andReturnInt: 456];
+    [[_obj shouldReceive] intMethod]; [[_obj ordered] andReturnInt: 456];
     ASSERTEQUALS(@"1", [_obj methodReturningArgument: @"1"]);
     ASSERTEQUALSINT(123, [_obj intMethod]);
     ASSERTEQUALS(@"3", [_obj methodReturningArgument: @"1"]);
