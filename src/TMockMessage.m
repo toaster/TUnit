@@ -552,27 +552,22 @@ static TMutableArray *__orderedMessages = nil;
 }
 
 
-#pragma .h #define RESULT_ACCESSOR_H(type, Type) - (void)push##Type##Result: (type)result; - (type)pop##Type##Result;
+#pragma .h #define RESULT_ACCESSOR_H(type, Type) - (void)push##Type##Result: (type)result;
 
 #define RESULT_ACCESSOR(type, Type) - (void)push##Type##Result: (type)result\
 {\
     [self __newResult];\
     _lastResult->value.value = *((long long *)&result);\
-}; - (type)pop##Type##Result\
-{\
-    type result = (type)0;\
-    TMockResult *r = [self __popResult];\
-\
-    if (r != NULL) {\
-        result = *((type *)&r->value.value);\
-    }\
-    return result;\
-}
+};
 
 
-- (void)popVoidResult
+- (long long)popResult
 {
-    [self __popResult];
+    TMockResult *r = [self __popResult];
+    if (r != NULL) {
+        return r->value.value;
+    }
+    return 0;
 }
 
 

@@ -163,19 +163,12 @@ static inline void checkForResponsibility(id obj, SEL sel)
 }
 
 
-static byte __byteResult = 0;
-static byte byteReturner(id self, SEL sel, ...)
-{
-    return __byteResult;
-}
-
-
-static id replay(id obj, SEL sel, ...)
+static long long replay(id obj, SEL sel, ...)
 {
     arglist_t argFrame = __builtin_apply_args();
     _TMockData *data = getData(obj);
     TMockMessage *msg = nil;
-    id result = nil;
+    long long result = 0;
     TMutableArray *similars = [TMutableArray array];
 
     if (data == NULL) {
@@ -203,152 +196,44 @@ static id replay(id obj, SEL sel, ...)
                     encoding_getFrameSize(method_getTypeEncoding(method))));
         }
     } else {
-        BOOL isByteReturn = NO;
-        // FIXME support für alle typen -> beachten: __builtin_return erst _nach_ throw exception,
-        // popResult aber _vorher_. -> Tests!
-        // FIXME Apple Runtime hat keine typisierten Selektoren
-        //       → aber man kann sich die Method von der Klasse holen, die auch Typen hat.
-        char type = sel->sel_types != NULL ? encoding_getType(sel->sel_types) : _C_ID;
-        switch (type) {
-            case _C_CHR:
-            case _C_UCHR:
-                // FIXME test
-                __byteResult = [msg popCharResult];
-                isByteReturn = YES;
-                break;
-            case _C_SHT:
-            case _C_USHT:
-                // FIXME test
-                result = (id)((size_t)[msg popShortResult]);
-                break;
-            case _C_INT:
-            case _C_UINT:
-                // FIXME test
-                result = (id)((size_t)[msg popIntResult]);
-                break;
-            case _C_LNG:
-            case _C_ULNG:
-                // FIXME test
-                result = (id)((size_t)[msg popLongResult]);
-                break;
-            case _C_LNG_LNG:
-            case _C_ULNG_LNG:
-                // FIXME test
-                result = (id)((size_t)[msg popLongLongResult]);
-                break;
-            case _C_ID:
-            case _C_CLASS:
-            case _C_SEL:
-            case _C_PTR:
-            case _C_CHARPTR:
-                // FIXME test
-                result = [msg popPtrResult];
-                break;
-            case _C_VOID:
-                [msg popVoidResult];
-                break;
-            default:
-                @throw [TTestException exceptionWithFormat: @"Unsupported return type '%c' mocked.", type];
-        }
+        result = [msg popResult];
         if ([msg exception] != nil) {
             @throw [msg exception];
-        }
-        // FIXME braucht man das wirklich? → Tests?
-        // FIXME wenn ja, braucht man das auch für short, int (64bit), long long (32bit), float
-        // (64bit) und double (32bit)
-        if (isByteReturn) {
-            __builtin_return(__builtin_apply((apply_t)byteReturner, argFrame, 0));
         }
     }
     return result;
 }
 
 
-#define _RETURN_FORWARD_0(type) return (type)0
-#define _RETURN_FORWARD_1(type) return (type)self
-#define _FORWARD_MESSAGE(type, returnself) static type type##Forward(id self, SEL cmd, SEL sel, arglist_t argFrame)\
-{\
-    _TMockData *data = getData(self);\
-    data->isRecording = NO;\
-    object_setClass(self, data->replayerClass);\
-    checkForResponsibility(self, sel);\
-    const char *typeEncoding =\
-            method_getTypeEncoding(class_getInstanceMethod(data->originalClass, sel));\
-    class_addMethod(data->replayerClass, sel, replay, typeEncoding);\
-    TMockMessage *m = [TMockMessage mockMessageWithSel: sel receiver: self andArgs: argFrame];\
-    if (data->file != NULL) {\
-        [m setLocation: data->file : data->line];\
-    }\
-    [m setCallCount: data->callCount];\
-    [data->messages addObject: m];\
-    if (data->totallyReplaceMethod) {\
-        [data->totallyReplacedMethods add: [TUtils stringFromSelector: sel]];\
-    }\
-    _RETURN_FORWARD_##returnself(type);\
+static long long forward(id self, SEL cmd, SEL sel, arglist_t argFrame)
+{
+    _TMockData *data = getData(self);
+    data->isRecording = NO;
+    object_setClass(self, data->replayerClass);
+    checkForResponsibility(self, sel);
+    const char *typeEncoding =
+            method_getTypeEncoding(class_getInstanceMethod(data->originalClass, sel));
+    class_addMethod(data->replayerClass, sel, (IMP)replay, typeEncoding);
+    TMockMessage *m = [TMockMessage mockMessageWithSel: sel receiver: self andArgs: argFrame];
+    if (data->file != NULL) {
+        [m setLocation: data->file : data->line];
+    }
+    [m setCallCount: data->callCount];
+    [data->messages addObject: m];
+    if (data->totallyReplaceMethod) {
+        [data->totallyReplacedMethods add: [TUtils stringFromSelector: sel]];
+    }
+    return (size_t)self;
 }
-
-#define FORWARD_MESSAGE(type) _FORWARD_MESSAGE(type, 1)
-#define RETURNSELF_FORWARD_MESSAGE(type) _FORWARD_MESSAGE(type, 0)
-
-
-// FIXME word-Typ-fowarder loswerden und Pointer ohne ifdef
-// FIXME vllt. kann man ja doch alle ausser void self returnen lassen, wenn die forwarder immer id
-// liefern (siehe types unten)
-
-
-RETURNSELF_FORWARD_MESSAGE(byte)
-
-
-RETURNSELF_FORWARD_MESSAGE(word)
-
-#ifdef __LP64__
-
-RETURNSELF_FORWARD_MESSAGE(dword)
-
-
-FORWARD_MESSAGE(qword)
-
-#else
-
-FORWARD_MESSAGE(dword)
-
-
-RETURNSELF_FORWARD_MESSAGE(qword)
-
-#endif
-
-RETURNSELF_FORWARD_MESSAGE(float)
-
-
-RETURNSELF_FORWARD_MESSAGE(double)
-
-
-FORWARD_MESSAGE(void)
-
-
-RETURNSELF_FORWARD_MESSAGE(block)
 
 
 static void addRecordMethods(Class class)
 {
-    // FIXME stimmen die größen? müsste das für 64bit nicht alles anders aussehen? → Berechner
-    // (MAKRO) bauen!
-    class_addMethod(class,
-            sel_registerName("byteForward::"), (IMP)byteForward, "C16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("wordForward::"), (IMP)wordForward, "S16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("dwordForward::"), (IMP)dwordForward, "I16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("qwordForward::"), (IMP)qwordForward, "Q16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("floatForward::"), (IMP)floatForward, "f16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("doubleForward::"), (IMP)doubleForward, "d16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("voidForward::"), (IMP)voidForward, "v16@0:4:8^(arglist=*[4c])12");
-    class_addMethod(class,
-            sel_registerName("blockForward::"), (IMP)blockForward, "^v16@0:4:8^(arglist=*[4c])12");
+    class_addMethod(class, sel_registerName("forward::"), (IMP)forward,
+            method_getTypeEncoding(class_getInstanceMethod([TObject class], @selector(forward::))));
+    // FIXME TODO
+    //class_addMethod(class,
+    //        sel_registerName("blockForward::"), (IMP)blockForward, "^v16@0:4:8^(arglist=*[4c])12");
 }
 
 

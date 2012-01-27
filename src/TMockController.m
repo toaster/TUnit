@@ -263,60 +263,10 @@
 }
 
 
-#pragma .h #define GOT_MESSAGE_H(type, Type) - (type)mock: (TMock *)mock got##Type##Msg: (SEL)sel withArgFrame: (arglist_t)argFrame;
-
-
-#define GOT_MESSAGE(type, Type) - (type)mock: (TMock *)mock got##Type##Msg: (SEL)sel withArgFrame: (arglist_t)argFrame\
-{\
-    return [[self __mock: mock gotMsg: sel withArgFrame: argFrame] pop##Type##Result];\
-}
-
-
-#pragma .h GOT_MESSAGE_H(char, Char);
-GOT_MESSAGE(char, Char);
-
-
-#pragma .h GOT_MESSAGE_H(short, Short);
-GOT_MESSAGE(short, Short);
-
-
-#pragma .h GOT_MESSAGE_H(int, Int);
-GOT_MESSAGE(int, Int);
-
-
-#pragma .h GOT_MESSAGE_H(long, Long);
-GOT_MESSAGE(long, Long);
-
-
-#pragma .h GOT_MESSAGE_H(long long, LongLong);
-GOT_MESSAGE(long long, LongLong);
-
-
-#pragma .h GOT_MESSAGE_H(void *, Ptr);
-GOT_MESSAGE(void *, Ptr);
-
-
-#pragma .h GOT_MESSAGE_H(float, Float);
-GOT_MESSAGE(float, Float);
-
-
-#pragma .h GOT_MESSAGE_H(double, Double);
-GOT_MESSAGE(double, Double);
-
-
-- (void)mock: (TMock *)mock gotVoidMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
+- (long long)mock: (TMock *)mock gotMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
 {
-    [[self __mock: mock gotMsg: sel withArgFrame: argFrame] popVoidResult];
+    return [[self __mock: mock gotMsg: sel withArgFrame: argFrame] popResult];
 }
-
-
-- (retval_t)mock: (TMock *)mock gotBlockMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
-{
-    return (retval_t)[[self __mock: mock gotMsg: sel withArgFrame: argFrame] popPtrResult];
-}
-
-
-#pragma .h #undef GOT_MESSAGE_H
 
 
 - (void)setCallCount: (unsigned int)count
