@@ -1,5 +1,5 @@
 //
-// (C) Copyright Tilo Prütz
+// (C) Copyright Tilo PrÃ¼tz
 //
 
 #include "TUnit/TTestException.h"
