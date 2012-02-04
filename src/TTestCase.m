@@ -291,8 +291,8 @@ static TString *__package = nil;
         file: (const char *)file line: (int)line
 {
     if (obj1 != obj2) {
-        @throw [TTestException exceptionAt: file : line withMessage: [self assertionMessage:
-                @"%@(%p) is not identical to %@(%p)", obj1, obj1, obj2, obj2]];
+        @throw [TTestException exceptionAt: file : line
+                withMessage: [self assertionMessage: @"%p is not identical to %p", obj1, obj2]];
     }
 }
 
