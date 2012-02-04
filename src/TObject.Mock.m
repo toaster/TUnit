@@ -277,7 +277,7 @@ static void dealloc_imp(id self, SEL sel)
 
 static Class class_imp(id self, SEL sel)
 {
-    return getData(self)->originalClass;
+    return getData(self)->rcvIsClass ? self : getData(self)->originalClass;
 }
 
 
@@ -337,10 +337,10 @@ static void mock(id obj, const char *file, int line)
     _TMockData *data = getData(obj);
     if (data == NULL) {
         data = newData(obj);
+        data->originalClass = object_getClass(obj);
         if (class_isMetaClass(data->originalClass)) {
             data->rcvIsClass = YES;
         }
-        data->originalClass = object_getClass(obj);
         Class replayer = createReplayerClass(data);
         data->replayerClass = data->rcvIsClass ? object_getClass(replayer) : replayer;
         object_setClass(obj, data->replayerClass);
