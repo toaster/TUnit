@@ -13,6 +13,7 @@
 #include <objc/runtime.h>
 #include <string.h>
 
+#include "TUnit/ProtocolTester.h"
 #include "TUnit/TTestException.h"
 #include "TUnit/TMockController.h"
 #include "TUnit/TMockMessage.h"
@@ -474,7 +475,7 @@ static TString *__package = nil;
 }
 
 
-- (void)printRunning
+- (void)printRunning: (Class)classUnderTest
 {
     [TUserIO print: @"objc."];
     if ([__package containsData]) {
@@ -482,16 +483,21 @@ static TString *__package = nil;
         [TUserIO print: @"."];
     }
     [TUserIO print: [self className]];
+    if (classUnderTest) {
+        [TUserIO print: @"("];
+        [TUserIO print: [classUnderTest className]];
+        [TUserIO print: @")"];
+    }
     [TUserIO print: @" "];
     [TUserIO flush];
 }
 
 
-- (int)run: (TString *)methodFilter
+- (int)run: (TString *)methodFilter for: (Class)classUnderTest
 {
     int result = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
-    [self printRunning];
+    [self printRunning: classUnderTest];
     TMutableArray *failures = [TMutableArray array];
     id error = nil;
     @try {
@@ -635,12 +641,38 @@ int objcmain(int argc, char *argv[])
     }
     for (id <TIterator> i = [[[testClasses allKeys] sortedArrayUsing:
             @selector(caseInsensitiveCompare:)] iterator]; [i hasCurrent]; [i next]) {
-        TTestCase *test = nil;
-        @try {
-            test = [[[testClasses objectForKey: [i current]] alloc] init];
-            result += [test run: methodFilter];
-        } @finally {
-            [test release];
+        Class testClass = [testClasses objectForKey: [i current]];
+        if ([testClass conformsTo: @protocol(ProtocolTester)]) {
+            for (int i = 0; i < classCount; i++) {
+                Class class = classes[i];
+                // GCC's “conformsTo:” is broken
+                if (class_respondsToSelector(object_getClass(class), @selector(isKindOf:)) &&
+                        [class isKindOf: [TObject class]] &&
+                        [class conformsTo: [testClass protocolUnderTest]]) {
+                    TTestCase *test = nil;
+                    @try {
+                        SEL initializer = [TUtils selectorFromString:
+                                [TString stringWithFormat: @"initFor%@", [class className]]];
+                        test = [testClass alloc];
+                        if ([test respondsTo: initializer]) {
+                            [test perform: initializer];
+                        } else {
+                            [test perform: [TUtils selectorFromString: @"initFor:"] with: class];
+                        }
+                        result += [test run: methodFilter for: class];
+                    } @finally {
+                        [test release];
+                    }
+                }
+            }
+        } else {
+            TTestCase *test = nil;
+            @try {
+                test = [[testClass alloc] init];
+                result += [test run: methodFilter for: Nil];
+            } @finally {
+                [test release];
+            }
         }
     }
     return result;
