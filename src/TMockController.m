@@ -89,7 +89,7 @@
     [s writeObject: @" for"];
 
     if (mock->_class != Nil) {
-        if (mock->_metaClass != Nil) {
+        if (mock->_metaClass != NULL) {
             [s writeObject: @" meta class of"];
         }
         [s writeObject: @" class "];

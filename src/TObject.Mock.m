@@ -237,7 +237,7 @@ static void addRecordMethods(Class class)
 }
 
 
-static void verifyAndCleanupMocksFor(struct objc_object *self)
+static void verifyAndCleanupMocksFor(id self)
 {
     _TMockData *data = getData(self);
     if (data != NULL) {

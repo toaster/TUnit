@@ -50,9 +50,9 @@ static inline void checkForResponsibility(TMock *self, SEL sel)
 {
     if ((self->_protocol != nil &&
             ![self->_protocol instancesRespondTo: sel]) ||
-            (self->_metaClass != Nil &&
-            ![self->_metaClass instancesRespondTo: sel]) ||
-            (self->_metaClass == nil && self->_class != Nil &&
+            (self->_metaClass != NULL &&
+            ![(Class)self->_metaClass instancesRespondTo: sel]) ||
+            (self->_metaClass == NULL && self->_class != Nil &&
             ![self->_class instancesRespondTo: sel])) {
         @throw [TTestException exceptionWithFormat:
                 @"%@ received invalid message '%@'",

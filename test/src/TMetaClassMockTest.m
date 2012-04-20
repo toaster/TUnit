@@ -1,5 +1,5 @@
 //
-// (C) Copyright Tilo Prütz
+// (C) Copyright Tilo PrÃ¼tz
 //
 
 #include "TMetaClassMockTest.h"
@@ -43,9 +43,9 @@
 - (void)testCharClassMethod
 {
     [_mock charClassMethod];
-    [_controller setCharResult: 'ü'];
+    [_controller setCharResult: '\xf0'];
     [_controller replay];
-    ASSERT([_mock charClassMethod] == 'ü');
+    ASSERT([_mock charClassMethod] == '\xf0');
 }
 
 

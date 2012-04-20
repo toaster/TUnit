@@ -176,7 +176,7 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
     Method method = NULL;
     if (_isTMock(receiver)) {
         TMock *mock = (TMock *)receiver;
-        if (mock->_metaClass != Nil) {
+        if (mock->_metaClass != NULL) {
             method = class_getInstanceMethod(mock->_metaClass, sel);
         } else if (mock->_class != Nil) {
             method = class_getInstanceMethod(mock->_class, sel);
