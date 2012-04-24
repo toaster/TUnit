@@ -28,7 +28,7 @@ union _TMockVariable {
 };
 
 struct _TMockResult {
-    TMockVariable value;
+    char value[8];
     unsigned int count;
     unsigned int used;
     TMockResult *next;
@@ -53,6 +53,7 @@ struct _TMockResult {
     BOOL _isOrdered;
     const char *_file;
     int _line;
+    unsigned int _resultSize;
 }
 
 
@@ -158,93 +159,62 @@ struct objc_method {
 };
 
 
-static inline void methodFromDescription(struct objc_method_description *desc, struct objc_method *method)
+static inline BOOL _parameterValues(TInvocation *invocation,
+        TMockVariable **values, TMutableArray *argStrings,
+        BOOL validate, unsigned int expectedArgCount, TMockVariable *args, BOOL *skipCheck)
 {
-    method->method_name = desc->name;
-    method->method_types = desc->types;
-    method->method_imp = NULL;
-}
+    SEL sel = [invocation selector];
+    id receiver = [invocation target];
+    TMethodSignature *sig = [invocation methodSignature];
+    unsigned int argCount = [sig numberOfArguments];
 
-
-static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argFrame,
-        TMockVariable **values, TMutableArray *argStrings, BOOL validate, int argCount,
-        TMockVariable *args, BOOL *skipCheck)
-{
-    unsigned int result = 0;
-    BOOL messageIsValid = NO;
-
-    Method method = NULL;
-    if (_isTMock(receiver)) {
-        TMock *mock = (TMock *)receiver;
-        if (mock->_metaClass != NULL) {
-            method = class_getInstanceMethod(mock->_metaClass, sel);
-        } else if (mock->_class != Nil) {
-            method = class_getInstanceMethod(mock->_class, sel);
-        } else if (mock->_protocol != NULL) {
-            struct objc_method_description *description =
-                    [mock->_protocol descriptionForInstanceMethod: sel];
-            if (!description) {
-                description = [mock->_protocol descriptionForClassMethod: sel];
-            }
-            if (description) {
-                method = alloca(sizeof(struct objc_method));
-                methodFromDescription(description, method);
-            }
-        }
-    } else if (OBJ_IS_INSTANCE(receiver)) {
-        method = class_getInstanceMethod(object_getClass(receiver), sel);
-    } else {
-        method = class_getClassMethod(receiver, sel);
+    if (validate && expectedArgCount != argCount) {
+        @throw [TTestException exceptionWithFormat: @"Invalid argument count %d (should be %d) "
+                @"for message '%@' to %@.", argCount, expectedArgCount,
+                [TUtils stringFromSelector: sel], _idString(receiver)];
     }
-    if (method != NULL) {
-        char *argFrameArgs = encoding_getArguments(method, argFrame);
-        messageIsValid = YES;
-        result = method_getNumberOfArguments(method);
-        if (values != NULL) {
-            *values = (TMockVariable *)tAllocZero(result * sizeof(TMockVariable));
-        }
-        for (int i = 0; i < result; ++i) {
-            char *typeString = method_copyArgumentType(method, i);
-            int offset = encoding_getArgumentOffset(typeString);
-            char type = encoding_getType(typeString);
-            const char *arg = argFrameArgs + offset;
-            free(typeString);
-            if (arg == NULL) {
-                break;
-            }
-            BOOL isValid = argCount > i;
-            switch (type) {
-                case _C_CHR:
-                case _C_UCHR:
-                    [argStrings addObject: _charString(*arg)];
-                    if (!validate) {
-                        (*values)[i].value = *arg;
-                    } else if (isValid) {
-                        isValid = (*arg == args[i].value);
-                    }
-                    break;
-                case _C_SHT:
-                case _C_USHT:
-                    [argStrings addObject: _shortString(*((short *)arg), type == _C_SHT)];
-                    if (!validate) {
-                        (*values)[i].value = *((short *)arg);
-                    } else if (isValid) {
-                        isValid = (*((short *)arg) == args[i].value);
-                    }
-                    break;
-                case _C_ID:
-                    if (i > 0) {
-                        [argStrings addObject: _idString(*((id *)arg))];
-                    }
-                    if (!validate) {
-                        (*values)[i].value = (size_t)*((id *)arg);
-                    } else if (isValid && i > 0) {
-                        // arg 0 is the receiver -> maybe a mock that must not get a message here.
-                        // It's validity has already been approved.
-                        id value = *((id *)arg);
-                        id expectedValue = (id)((size_t)args[i].value);
 
-                        isValid = (value == expectedValue) || [value isEqual: expectedValue];
+    BOOL messageIsValid = YES;
+    if (values != NULL) {
+        *values = (TMockVariable *)tAllocZero(argCount * sizeof(TMockVariable));
+    }
+    char arg[[sig frameLength]];
+    for (int i = 0; i < argCount; ++i) {
+        [invocation getArgument: arg atIndex: i];
+        char type = encoding_getType([sig getArgumentTypeAtIndex: i]);
+        BOOL isValid = YES;
+        switch (type) {
+            case _C_CHR:
+            case _C_UCHR:
+                [argStrings addObject: _charString(*arg)];
+                if (!validate) {
+                    (*values)[i].value = *arg;
+                } else if (isValid) {
+                    isValid = (*arg == args[i].value);
+                }
+                break;
+            case _C_SHT:
+            case _C_USHT:
+                [argStrings addObject: _shortString(*((short *)arg), type == _C_SHT)];
+                if (!validate) {
+                    (*values)[i].value = *((short *)arg);
+                } else if (isValid) {
+                    isValid = (*((short *)arg) == args[i].value);
+                }
+                break;
+            case _C_ID:
+                if (i > 0) {
+                    [argStrings addObject: _idString(*((id *)arg))];
+                }
+                if (!validate) {
+                    (*values)[i].value = (size_t)*((id *)arg);
+                } else if (isValid && i > 0) {
+                    // arg 0 is the receiver -> maybe a mock that must not get a message here.
+                    // It's validity has already been approved.
+                    id value = *((id *)arg);
+                    id expectedValue = (id)((size_t)args[i].value);
+
+                    isValid = (value == expectedValue) || [value isEqual: expectedValue];
 // FIXME: das kommt von ip - Nutzen verstehen, testen und ggf. einbauen
 //// #define DEBUG_COMPARE
 //#ifdef DEBUG_COMPARE
@@ -303,152 +273,138 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
 //                                    [value isEqual: expectedValue];
 //#endif
 //                        }
+                }
+                break;
+            case _C_SEL:
+                if (i > 1) {
+                    [argStrings addObject: _selString(*((SEL *)arg))];
+                    if (!validate) {
+                        (*values)[i].value = (size_t)*((SEL *)arg);
+                    } else if (isValid) {
+                        isValid = sel_eq(*((SEL *)arg), (SEL)((size_t)args[i].value));
                     }
-                    break;
-                case _C_SEL:
-                    if (i > 1) {
-                        [argStrings addObject: _selString(*((SEL *)arg))];
+                }
+                break;
+            case _C_CLASS:
+                [argStrings addObject: _classString(*((Class *)arg))];
+                if (!validate) {
+                    (*values)[i].value = (size_t)*((Class *)arg);
+                } else if (isValid && i > 1) {
+                    isValid = ((size_t)*((Class *)arg) == args[i].value);
+                }
+                break;
+            case _C_PTR:
+            case _C_CHARPTR:
+                [argStrings addObject: _ptrString(*((void **)arg))];
+                if (!validate) {
+                    (*values)[i].value = (size_t)*((void **)arg);
+                } else if (isValid && i > 1) {
+                    isValid = ((size_t)*((void **)arg) == args[i].value);
+                }
+                break;
+            case _C_INT:
+            case _C_UINT:
+                [argStrings addObject: _intString(*((int *)arg), type == _C_INT)];
+                if (!validate) {
+                    (*values)[i].value = *((int *)arg);
+                } else if (isValid && i > 1) {
+                    isValid = (*((int *)arg) == args[i].value);
+                }
+                break;
+            case _C_LNG:
+            case _C_ULNG:
+                [argStrings addObject: _longString(*((long *)arg), type)];
+                if (!validate) {
+                    (*values)[i].value = *((long *)arg);
+                } else if (isValid && i > 1) {
+                    isValid = (*((long *)arg) == args[i].value);
+                }
+                break;
+            case _C_LNG_LNG:
+            case _C_ULNG_LNG:
+                [argStrings addObject: _longLongString(*((long long *)arg), type == _C_LNG_LNG)];
+                if (!validate) {
+                    (*values)[i].value = *((long long *)arg);
+                } else if (isValid) {
+                    isValid = (*((long long *)arg) == args[i].value);
+                }
+                break;
+            case _C_FLT:
+                [argStrings addObject: _floatString(*((float *)arg))];
+                if (!validate) {
+                    (*values)[i].value = *((long long *)&*((float *)arg));
+                } else if (isValid) {
+                    isValid = (*((float *)arg) == *((float *)&args[i].value));
+                }
+                break;
+            case _C_DBL:
+                [argStrings addObject: _doubleString(*((double *)arg))];
+                if (!validate) {
+                    (*values)[i].value = *((long long *)&*((double *)arg));
+                } else if (isValid) {
+                    isValid = (*((double *)arg) == *((double *)&args[i].value));
+                }
+                break;
+            // FIXME beginnen Arrays wirklich mit _C_ARY_B oder doch mit _C_PTR → evaluieren
+            // FIXME auf jeden Fall können sie mit _C_CONST beginnen :)
+            case _C_ARY_B:
+                /*{
+                    // FIXME das passt noch nicht
+                    char *end = strchr(cur, _C_ARY_E);
+                    char elementType = *(end - 1);
+                    if (elementType == _C_CHR || elementType == _C_UCHR) {
+                        unsigned arraySize = 0;
+                        for (int j = 0; j < end - cur - 2; ++j) {
+                            arraySize += (*(end - 2 - j) - '0') * pow(10, j);
+                        }
+                        [argStrings addObject: _charArrayString(*(char **)arg, arraySize)];
+                        TString *value = [TString stringWithCString: *(char **)arg length: arraySize];
                         if (!validate) {
-                            (*values)[i].value = (size_t)*((SEL *)arg);
-                        } else if (isValid) {
-                            isValid = sel_eq(*((SEL *)arg), (SEL)((size_t)args[i].value));
-                        }
-                    }
-                    break;
-                case _C_CLASS:
-                    [argStrings addObject: _classString(*((Class *)arg))];
-                    if (!validate) {
-                        (*values)[i].value = (size_t)*((Class *)arg);
-                    } else if (isValid && i > 1) {
-                        isValid = ((size_t)*((Class *)arg) == args[i].value);
-                    }
-                    break;
-                case _C_PTR:
-                case _C_CHARPTR:
-                    [argStrings addObject: _ptrString(*((void **)arg))];
-                    if (!validate) {
-                        (*values)[i].value = (size_t)*((void **)arg);
-                    } else if (isValid && i > 1) {
-                        isValid = ((size_t)*((void **)arg) == args[i].value);
-                    }
-                    break;
-                case _C_INT:
-                case _C_UINT:
-                    [argStrings addObject: _intString(*((int *)arg), type == _C_INT)];
-                    if (!validate) {
-                        (*values)[i].value = *((int *)arg);
-                    } else if (isValid && i > 1) {
-                        isValid = (*((int *)arg) == args[i].value);
-                    }
-                    break;
-                case _C_LNG:
-                case _C_ULNG:
-                    [argStrings addObject: _longString(*((long *)arg), type)];
-                    if (!validate) {
-                        (*values)[i].value = *((long *)arg);
-                    } else if (isValid && i > 1) {
-                        isValid = (*((long *)arg) == args[i].value);
-                    }
-                    break;
-                case _C_LNG_LNG:
-                case _C_ULNG_LNG:
-                    [argStrings addObject: _longLongString(*((long long *)arg), type == _C_LNG_LNG)];
-                    if (!validate) {
-                        (*values)[i].value = *((long long *)arg);
-                    } else if (isValid) {
-                        isValid = (*((long long *)arg) == args[i].value);
-                    }
-                    break;
-                case _C_FLT:
-                    [argStrings addObject: _floatString(*((float *)arg))];
-                    if (!validate) {
-                        (*values)[i].value = *((long long *)&*((float *)arg));
-                    } else if (isValid) {
-                        isValid = (*((float *)arg) == *((float *)&args[i].value));
-                    }
-                    break;
-                case _C_DBL:
-                    [argStrings addObject: _doubleString(*((double *)arg))];
-                    if (!validate) {
-                        (*values)[i].value = *((long long *)&*((double *)arg));
-                    } else if (isValid) {
-                        isValid = (*((double *)arg) == *((double *)&args[i].value));
-                    }
-                    break;
-                // FIXME beginnen Arrays wirklich mit _C_ARY_B oder doch mit _C_PTR → evaluieren
-                // FIXME auf jeden Fall können sie mit _C_CONST beginnen :)
-                case _C_ARY_B:
-                    /*{
-                        // FIXME das passt noch nicht
-                        char *end = strchr(cur, _C_ARY_E);
-                        char elementType = *(end - 1);
-                        if (elementType == _C_CHR || elementType == _C_UCHR) {
-                            unsigned arraySize = 0;
-                            for (int j = 0; j < end - cur - 2; ++j) {
-                                arraySize += (*(end - 2 - j) - '0') * pow(10, j);
-                            }
-                            [argStrings addObject: _charArrayString(*(char **)arg, arraySize)];
-                            TString *value = [TString stringWithCString: *(char **)arg length: arraySize];
-                            if (!validate) {
-                                (*values)[i].aCharArray = value;
-                            } else {
-                                isValid = [args[i].aCharArray isEqual: value];
-                            }
-                            break;
+                            (*values)[i].aCharArray = value;
                         } else {
-                            // Other array types are not supported yet.
+                            isValid = [args[i].aCharArray isEqual: value];
                         }
-                    }*/
-                // Other block parameters are not supported yet.
-                case _C_UNION_B:
-                case _C_STRUCT_B:
-                // Parameters must not be void.
-                case _C_VOID:
-                case _C_ONEWAY:
-                // Bitfield, Undefined, Vector and (Array, Union, Struct) End
-                // are not supported.
-                case _C_BFLD:
-                case _C_UNDEF:
-                case _C_VECTOR:
-                case _C_ARY_E:
-                case _C_UNION_E:
-                case _C_STRUCT_E:
-                default:
-                    @throw [TTestException exceptionWithFormat: @"Invalid parameter type '%c' "
-                            @"for forwarded message '%@' parameter %d.", type, [TUtils stringFromSelector: sel], i];
-                    isValid = NO;
-                    break;
-            }
-            if (validate && !isValid && skipCheck[i]) {
-                isValid = YES;
-            }
-            if (validate && !isValid) {
-                messageIsValid = NO;
-            }
+                        break;
+                    } else {
+                        // Other array types are not supported yet.
+                    }
+                }*/
+            // Other block parameters are not supported yet.
+            case _C_UNION_B:
+            case _C_STRUCT_B:
+            // Parameters must not be void.
+            case _C_VOID:
+            case _C_ONEWAY:
+            // Bitfield, Undefined, Vector and (Array, Union, Struct) End
+            // are not supported.
+            case _C_BFLD:
+            case _C_UNDEF:
+            case _C_VECTOR:
+            case _C_ARY_E:
+            case _C_UNION_E:
+            case _C_STRUCT_E:
+            default:
+                @throw [TTestException exceptionWithFormat:
+                        @"Invalid parameter type '%c' for forwarded message '%@' parameter %d.",
+                        type, [TUtils stringFromSelector: sel], i];
         }
-        free(argFrameArgs);
-    } else if (values != NULL) {
-        *values = NULL;
+        if (validate && !isValid && !skipCheck[i]) {
+            messageIsValid = NO;
+        }
     }
-    if (validate && argCount != result) {
-        @throw [TTestException exceptionWithFormat: @"Invalid argument count %d (should be %d) "
-                @"for message '%@' to %@.", result, argCount, [TUtils stringFromSelector: sel], _idString(receiver)];
-    }
-    return validate ? messageIsValid : result;
+    return !validate || messageIsValid;
 }
 
 
-+ mockMessageWithSel: (SEL)sel receiver: receiver andArgs: (arglist_t)argFrame
++ messageWithInvocation: (TInvocation *)invocation
 {
-    return [[[self alloc] initWithSel: sel receiver: receiver andArgs: argFrame] autorelease];
+    return [[[self alloc] initWithInvocation: invocation] autorelease];
 }
 
 
-+ unexpectedMockMessageWithSel: (SEL)sel receiver: receiver andArgs: (arglist_t)argFrame
++ unexpectedMessageWithInvocation: (TInvocation *)invocation
 {
-    TMockMessage *msg = [[[self alloc] initWithSel: sel receiver: receiver
-            andArgs: argFrame] autorelease];
-
+    TMockMessage *msg = [self messageWithInvocation: invocation];
     msg->_unexpected = YES;
     return msg;
 }
@@ -476,18 +432,20 @@ static inline unsigned int _parameterValues(id receiver, SEL sel, arglist_t argF
 }
 
 
-- initWithSel: (SEL)sel receiver: receiver andArgs: (arglist_t)argFrame
+- initWithInvocation: (TInvocation *)invocation
 {
     [self init];
-    _sel = sel;
-    _receiver = receiver;
+    _sel = [invocation selector];
+    _receiver = [invocation target];
     _argStrings = [[TMutableArray array] retain];
-    _argCount = _parameterValues(receiver, sel, argFrame, &_args, _argStrings, NO, 0, NULL, NULL);
+    _argCount = [[invocation methodSignature] numberOfArguments];
+    _parameterValues(invocation, &_args, _argStrings, NO, 0, NULL, NULL);
     if (_argCount > 0) {
         _skipCheck = (BOOL *)tAllocZero(_argCount * sizeof(BOOL));
     }
     [self __newResult];
     _overrideResult = YES;
+    _resultSize = [[invocation methodSignature] methodReturnLength];
     return self;
 }
 
@@ -557,17 +515,17 @@ static TMutableArray *__orderedMessages = nil;
 #define RESULT_ACCESSOR(type, Type) - (void)push##Type##Result: (type)result\
 {\
     [self __newResult];\
-    _lastResult->value.value = *((long long *)&result);\
+    memcpy(_lastResult->value, &result, _resultSize);\
 };
 
 
-- (long long)popResult
+- (void *)popResult
 {
     TMockResult *r = [self __popResult];
     if (r != NULL) {
-        return r->value.value;
+        return r->value;
     }
-    return 0;
+    return NULL;
 }
 
 
@@ -697,15 +655,9 @@ RESULT_ACCESSOR(double, Double);
 }
 
 
-- (BOOL)isForArgs: (arglist_t)argFrame
+- (BOOL)isForInvocation: (TInvocation *)invocation
 {
-    return (BOOL)_parameterValues(_receiver, _sel, argFrame, NULL, nil, YES, _argCount, _args, _skipCheck);
-}
-
-
-- (BOOL)isForSel: (SEL)sel receiver: receiver andArgs: (arglist_t)argFrame
-{
-    return [self isForSel: sel andReceiver: receiver] && [self isForArgs: argFrame];
+    return (BOOL)_parameterValues(invocation, NULL, nil, YES, _argCount, _args, _skipCheck);
 }
 
 
@@ -787,24 +739,25 @@ RESULT_ACCESSOR(double, Double);
 }
 
 
-- (TMockMessage *)checkForSel: (SEL)sel receiver: rcv andArgs: (arglist_t)argFrame
+- (TMockMessage *)checkForInvocation: (TInvocation *)invocation
         addSimilarityTo: (TMutableArray *)similars
 {
-    if ([self isForSel: sel andReceiver: rcv]) {
-        if ([self isForArgs: argFrame]) {
+    if ([self isForSel: [invocation selector] andReceiver: [invocation target]]) {
+        if ([self isForInvocation: invocation]) {
             if ([self hasPendingResults]) {
                 id firstOrdered = [__orderedMessages firstObject];
                 if ([[self class] consumeIfOrdered: self]) {
                     return self;
-                } else if ([firstOrdered isForSel: sel andReceiver: rcv]
-                        && [firstOrdered isForArgs: argFrame]
+                } else if ([firstOrdered isForInvocation: invocation]
                         && [[self class] consumeIfOrdered: firstOrdered]) {
                     return firstOrdered;
                 } else {
-                    @throw [TTestException exceptionWithFormat: @"Ordered message %@ was send out of order", self];
+                    @throw [TTestException
+                            exceptionWithFormat: @"Ordered message %@ was send out of order", self];
                 }
             } else if ([self wantsNotToBeCalled]) {
-                @throw [TTestException exceptionWithFormat: @"Message %@ which should not be sent was sent", self];
+                @throw [TTestException
+                        exceptionWithFormat: @"Message %@ which should not be sent was sent", self];
             } else {
                 [similars addObject: self];
             }

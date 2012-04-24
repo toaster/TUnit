@@ -7,6 +7,7 @@
 #pragma .h #include <TFoundation/TFoundation.h>
 
 #include <objc/runtime.h>
+#include <string.h>
 
 #include "TUnit/TTestException.h"
 #include "TUnit/TMockMessage.h"
@@ -163,26 +164,26 @@ static inline void checkForResponsibility(id obj, SEL sel)
 }
 
 
-static long long replay(id obj, SEL sel, ...)
+static void replay(ffi_cif *cif, void *result, void **args, FFIClosureUserData *userData)
 {
-    arglist_t argFrame = __builtin_apply_args();
+    id obj = *(id*)args[0];
     _TMockData *data = getData(obj);
-    TMockMessage *msg = nil;
-    long long result = 0;
-    TMutableArray *similars = [TMutableArray array];
 
     if (data == NULL) {
         @throw @"Received replay for receiver without data.";
     }
+
+    TInvocation *invocation = invocationFromFFIClosureCall(args, userData);
+    TMockMessage *msg = nil;
+    TMutableArray *similars = [TMutableArray array];
     for (id <TIterator> i = [data->messages reverseIterator];
             [i hasCurrent] && msg == nil; [i next]) {
-        msg = [[i current] checkForSel: sel receiver: obj andArgs: argFrame
-                addSimilarityTo: similars];
+        msg = [[i current] checkForInvocation: invocation addSimilarityTo: similars];
     }
     if (msg == nil) {
+        SEL sel = [invocation selector];
         if ([data->totallyReplacedMethods contains: [TUtils stringFromSelector: sel]]) {
-            TMockMessage *unexpected = [TMockMessage unexpectedMockMessageWithSel: sel
-                    receiver: obj andArgs: argFrame];
+            TMockMessage *unexpected = [TMockMessage unexpectedMessageWithInvocation: invocation];
             if ([similars containsData]) {
                 @throw [TTestException exceptionWithFormat: @"Unexpected message: %@\n"
                         @"Expected similar messages:\n  %@",
@@ -191,30 +192,35 @@ static long long replay(id obj, SEL sel, ...)
                 @throw [TTestException exceptionWithFormat: @"Unexpected message: %@", unexpected];
             }
         } else {
-            Method method = class_getInstanceMethod(data->originalClass, sel);
-            __builtin_return(__builtin_apply((apply_t)method_getImplementation(method), argFrame,
-                    encoding_getFrameSize(method_getTypeEncoding(method))));
+            ffi_call(cif, (void *)class_getMethodImplementation(data->originalClass, sel),
+                    result, args);
         }
     } else {
-        result = [msg popResult];
+        [invocation setReturnValue: [msg popResult]];
+        [invocation getReturnValue: result];
         if ([msg exception] != nil) {
             @throw [msg exception];
         }
     }
-    return result;
 }
 
 
-static long long forward(id self, SEL cmd, SEL sel, arglist_t argFrame)
+static void forward(id self, SEL cmd, TInvocation *invocation)
 {
     _TMockData *data = getData(self);
     data->isRecording = NO;
     object_setClass(self, data->replayerClass);
+
+    SEL sel = [invocation selector];
     checkForResponsibility(self, sel);
-    const char *typeEncoding =
-            method_getTypeEncoding(class_getInstanceMethod(data->originalClass, sel));
-    class_addMethod(data->replayerClass, sel, (IMP)replay, typeEncoding);
-    TMockMessage *m = [TMockMessage mockMessageWithSel: sel receiver: self andArgs: argFrame];
+
+    // FIXME Mehrfachrecordings erzeugen immer wieder dieselbe closure
+    // FIXME Memory-Leak: Wer räumt die erzeugte closure weg?
+    const char *types = method_getTypeEncoding(class_getInstanceMethod(data->originalClass, sel));
+    TMethodSignature *sig = [TMethodSignature signatureWithObjCTypes: types];
+    class_addMethod(data->replayerClass, sel, ffiClosure(sig, replay), types);
+
+    TMockMessage *m = [TMockMessage messageWithInvocation: invocation];
     if (data->file != NULL) {
         [m setLocation: data->file : data->line];
     }
@@ -223,17 +229,21 @@ static long long forward(id self, SEL cmd, SEL sel, arglist_t argFrame)
     if (data->totallyReplaceMethod) {
         [data->totallyReplacedMethods add: [TUtils stringFromSelector: sel]];
     }
-    return (size_t)self;
+
+    unsigned int resultLength = [[invocation methodSignature] methodReturnLength];
+    char result[resultLength];
+    memcpy(result, &self, resultLength > sizeof(id) ? sizeof(id) : resultLength);
+    [invocation setReturnValue: result];
 }
 
 
 static void addRecordMethods(Class class)
 {
-    class_addMethod(class, sel_registerName("forward::"), (IMP)forward,
-            method_getTypeEncoding(class_getInstanceMethod([TObject class], @selector(forward::))));
-    // FIXME TODO
-    //class_addMethod(class,
-    //        sel_registerName("blockForward::"), (IMP)blockForward, "^v16@0:4:8^(arglist=*[4c])12");
+    Method m = class_getInstanceMethod([TObject class], @selector(methodSignatureForSelector:));
+    class_addMethod(class, sel_registerName("methodSignatureForSelector:"),
+            method_getImplementation(m), method_getTypeEncoding(m));
+    class_addMethod(class, sel_registerName("forward:"), (IMP)forward,
+            method_getTypeEncoding(class_getInstanceMethod([TObject class], @selector(forward:))));
 }
 
 

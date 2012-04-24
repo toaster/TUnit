@@ -95,7 +95,7 @@
         [s writeObject: @" class "];
         [s writeObject: [mock->_class className]];
     } else if (mock->_protocol != nil) {
-        [s writeFormat: @" protocol %s", [mock->_protocol name]];
+        [s writeFormat: @" protocol %s", protocol_getName(mock->_protocol)];
     }
     [s close];
     return [s targetString];
@@ -194,16 +194,14 @@
 }
 
 
-- (TMockMessage *)__mock: (TMock *)mock gotMsg: (SEL)sel
-        withArgFrame: (arglist_t)argFrame
+- (void)mock: (TMock *)mock gotInvocation: (TInvocation *)invocation
 {
-    TMockMessage *msg = nil;
+    SEL sel = [invocation selector];
 
     if (mock->_mockListEntry->retainCount == 0) {
         @throw [TTestException exceptionWithFormat:
                 @"The mock '%@' was deallocated but got the message '%@'.",
-                [[self class] descriptionFor: mock],
-                [TUtils stringFromSelector: sel]];
+                [[self class] descriptionFor: mock], [TUtils stringFromSelector: sel]];
     }
     if (sel == @selector(retain)) {
         mock->_mockListEntry->retainCount++;
@@ -211,34 +209,30 @@
         mock->_mockListEntry->retainCount--;
     }
     if (_isRecording) {
-        [_messages addObject: [TMockMessage mockMessageWithSel: sel
-                receiver: mock andArgs: argFrame]];
+        [_messages addObject: [TMockMessage messageWithInvocation: invocation]];
     } else {
         TMutableArray *errors = [TMutableArray array];
+        TMockMessage *msg = nil;
 
         if (_isStrictReplaying) {
             if ([_messages count] > _currentMessage) {
                 TMockMessage *aMsg = [_messages objectAtIndex: _currentMessage];
 
-                if (![aMsg hasPendingResults] &&
-                        [_messages count] > ++_currentMessage) {
+                if (![aMsg hasPendingResults] && [_messages count] > ++_currentMessage) {
                     aMsg = [_messages objectAtIndex: _currentMessage];
                 }
-                msg = [aMsg checkForSel: sel receiver: mock andArgs: argFrame addSimilarityTo: nil];
+                msg = [aMsg checkForInvocation: invocation addSimilarityTo: nil];
                 if (msg == nil) {
                     [errors addObject: aMsg];
                 }
             }
         } else {
             for (id <TIterator> i = [_messages iterator]; [i hasCurrent] && msg == nil; [i next]) {
-                msg = [[i current] checkForSel: sel receiver: mock andArgs: argFrame
-                        addSimilarityTo: errors];
+                msg = [[i current] checkForInvocation: invocation addSimilarityTo: errors];
             }
         }
         if (msg == nil) {
-            TMockMessage *unexpected =
-                    [TMockMessage unexpectedMockMessageWithSel: sel
-                    receiver: mock andArgs: argFrame];
+            TMockMessage *unexpected = [TMockMessage unexpectedMessageWithInvocation: invocation];
 
             if ([errors containsData]) {
                 if (_isStrictReplaying) {
@@ -246,26 +240,21 @@
                             @"Unexpected message: %@\nExpected: %@",
                             unexpected, [errors firstObject]];
                 } else {
-                    @throw [TTestException
-                            exceptionWithFormat: @"Unexpected message: %@\n"
+                    @throw [TTestException exceptionWithFormat: @"Unexpected message: %@\n"
                             @"Expected similar messages:\n  %@", unexpected,
                             [errors componentsJoinedByString: @"\n  "]];
                 }
             } else {
-                @throw [TTestException exceptionWithFormat:
-                        @"Unexpected message: %@", unexpected];
+                @throw [TTestException exceptionWithFormat: @"Unexpected message: %@", unexpected];
             }
         } else if ([msg exception] != nil) {
             @throw [msg exception];
         }
+        void *result = [msg popResult];
+        if (result) {
+            [invocation setReturnValue: result];
+        }
     }
-    return msg;
-}
-
-
-- (long long)mock: (TMock *)mock gotMsg: (SEL)sel withArgFrame: (arglist_t)argFrame
-{
-    return [[self __mock: mock gotMsg: sel withArgFrame: argFrame] popResult];
 }
 
 

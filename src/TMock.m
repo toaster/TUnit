@@ -49,7 +49,7 @@
 static inline void checkForResponsibility(TMock *self, SEL sel)
 {
     if ((self->_protocol != nil &&
-            ![self->_protocol instancesRespondTo: sel]) ||
+            protocol_getMethodDescription(self->_protocol, sel, YES, YES).name == NULL) ||
             (self->_metaClass != NULL &&
             ![(Class)self->_metaClass instancesRespondTo: sel]) ||
             (self->_metaClass == NULL && self->_class != Nil &&
@@ -62,17 +62,27 @@ static inline void checkForResponsibility(TMock *self, SEL sel)
 }
 
 
-- (long long)forward: (SEL)sel : (arglist_t)argFrame
+- (TMethodSignature *)methodSignatureForSelector: (SEL)sel
 {
-    checkForResponsibility(self, sel);
-    return [_controller mock: self gotMsg: (SEL)sel withArgFrame: argFrame];
+    const char *types = sel_getTypeEncoding(sel);
+    if (!types) {
+        Method m = class_isMetaClass(object_getClass(self)) ?
+                class_getClassMethod((Class)self, sel) :
+                class_getInstanceMethod(self->_isa, sel);
+        types = method_getTypeEncoding(m);
+    }
+    TMethodSignature *sig = nil;
+    if (types) {
+        sig = [TMethodSignature signatureWithObjCTypes: types];
+    }
+    return sig;
 }
 
 
-- (block)blockForward: (SEL)sel : (arglist_t)argFrame
+- (void)forward: (TInvocation *)invocation
 {
-    @throw [TTestException exceptionWithFormat: @"Methods that return blocks "
-            @"(struct, union, array) are not mockable."];
+    checkForResponsibility(self, [invocation selector]);
+    [_controller mock: self gotInvocation: invocation];
 }
 
 
