@@ -593,8 +593,9 @@ int objcmain(int argc, char *argv[])
     __baseDir = [[TString stringWithCString: argv[1]] retain];
     __dataDir = [[TString stringWithCString: argv[2]] retain];
     __package = [[TString stringWithCString: argv[3]] retain];
-    TString *classFilter = (argc > 4) ? [TString stringWithCString: argv[4]] : nil;
-    TString *methodFilter = (argc > 5) ? [TString stringWithCString: argv[5]] : nil;
+    TString *classFilter = (argc > 4 && strlen(argv[4]) > 0) ? [TString stringWithCString: argv[4]] : nil;
+    TString *methodFilter = (argc > 5 && strlen(argv[5]) > 0) ? [TString stringWithCString: argv[5]] : nil;
+    TString *implementationFilter = (argc > 6 && strlen(argv[6]) > 0) ? [TString stringWithCString: argv[6]] : nil;
     if ([classFilter hasSuffix: @"Test"]) {
         classFilter = [classFilter substringToIndex: [classFilter length] - 4];
     }
@@ -616,7 +617,8 @@ int objcmain(int argc, char *argv[])
                 // GCC's “conformsTo:” is broken
                 if (class_get_class_method(class->class_pointer, @selector(isKindOf:)) &&
                         [class isKindOf: [TObject class]] &&
-                        [class conformsTo: [testClass protocolUnderTest]]) {
+                        [class conformsTo: [testClass protocolUnderTest]] &&
+                        (implementationFilter == nil || [[class className] matches: implementationFilter])) {
                     TTestCase *test = nil;
                     @try {
                         SEL initializer = [TUtils selectorFromString:
