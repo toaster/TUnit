@@ -482,9 +482,11 @@ static TString *__package = nil;
 
 - (int)run: (TString *)methodFilter for: (Class)classUnderTest
 {
-    int failures = 0;
+    int result = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
     struct objc_method_list *list = [self class]->methods;
+    TMutableArray *failures = [TMutableArray array];
+    id error = nil;
 
     [self printRunning: classUnderTest];
     @try {
@@ -508,29 +510,25 @@ static TString *__package = nil;
                         }
                         [self before];
                         @try {
-                            [TUserIO print: @"."];
                             [self perform: sel];
-                        } @catch(id e) {
+                            [TUserIO print: @"."];
+                        } @catch (id e) {
                             [exceptions push: e];
                         } @finally {
                             @try {
                                 verifyAndCleanupMocks();
-                            } @catch(id e) {
+                            } @catch (id e) {
                                 [exceptions push: e];
                             } @finally {
                                 [self after];
                             }
                         }
-                    } @catch(id e) {
+                    } @catch (id e) {
                         [exceptions push: e];
                     }
                     if ([exceptions containsData]) {
-                        ++failures;
-                        [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
-                                [self className], method, [exceptions pop]];
-                        while ([exceptions containsData]) {
-                            [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
-                        }
+                        [TUserIO print: @"F"];
+                        [failures addObject: A(method, exceptions)];
                     }
                 }
                 [testPool release];
@@ -538,13 +536,27 @@ static TString *__package = nil;
             list = list->method_next;
         }
         [self afterAll];
-    } @catch(id e) {
-        ++failures;
-        [TUserIO eprintln: @"ERROR: Test %@ failed - %@", [self className], e];
+    } @catch (id e) {
+        error = e;
     }
-    [TUserIO println: failures == 0 ? @" OK" : @" FAILED"];
+    [TUserIO println: (![failures containsData] && error == nil) ? @" OK" : @" FAILED"];
+    for (id <TIterator> i = [failures iterator]; [i hasCurrent]; [i next]) {
+        TArray *entry = [i current];
+        TString *method = [entry objectAtIndex: 0];
+        TStack *exceptions = [entry objectAtIndex: 1];
+        [TUserIO eprintln: @"ERROR: Test %@:%@ failed - %@",
+                [self className], method, [exceptions pop]];
+        while ([exceptions containsData]) {
+            [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
+        }
+    }
+    result = [failures count];
+    if (error) {
+        result++;
+        [TUserIO eprintln: @"ERROR: Test %@ failed - %@", [self className], error];
+    }
     [pool release];
-    return failures;
+    return result;
 }
 
 
