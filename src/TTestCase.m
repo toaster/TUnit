@@ -483,6 +483,7 @@ static TString *__package = nil;
 - (int)run: (TString *)methodFilter for: (Class)classUnderTest
 {
     int result = 0;
+    int testCount = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
     struct objc_method_list *list = [self class]->methods;
     TMutableArray *failures = [TMutableArray array];
@@ -502,6 +503,7 @@ static TString *__package = nil;
                         (nil == methodFilter || [method matches: methodFilter]) &&
                         ![method matches: @"Broken$"]) {
                     TStack *exceptions = [TStack stack];
+                    ++testCount;
                     @try {
                         [self clearHint];
                         [TMockMessage cleanupOrderedMessages];
@@ -551,6 +553,8 @@ static TString *__package = nil;
         }
     }
     result = [failures count];
+    [TUserIO eprintln: @"%d test%s, %d failure%s", testCount, testCount != 1 ? "s" : "",
+            result, result != 1 ? "s" : ""];
     if (error) {
         result++;
         [TUserIO eprintln: @"ERROR: Test %@ failed - %@", [self className], error];
