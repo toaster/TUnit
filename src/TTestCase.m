@@ -493,9 +493,8 @@ static TString *__package = nil;
 }
 
 
-- (int)run: (TString *)methodFilter for: (Class)classUnderTest
+- (void)run: (TString *)methodFilter for: (Class)classUnderTest statistics: (int[3])statistics
 {
-    int result = 0;
     TAutoreleasePool *pool = [[TAutoreleasePool alloc] init];
     int testCount = 0;
     [self printRunning: classUnderTest];
@@ -568,15 +567,14 @@ static TString *__package = nil;
             [TUserIO eprintln: @"Root cause:\n%@", [exceptions pop]];
         }
     }
-    result = [failures count];
-    [TUserIO eprintln: @"%d test%s, %d failure%s", testCount, testCount != 1 ? "s" : "",
-            result, result != 1 ? "s" : ""];
+    statistics[0]++;
+    statistics[1] += testCount;
+    statistics[2] += [failures count];
     if (error) {
-        result++;
+        statistics[2]++;
         [TUserIO eprintln: @"ERROR: Test %@ failed - %@", [self className], error];
     }
     [pool release];
-    return result;
 }
 
 
@@ -615,7 +613,6 @@ static TString *__package = nil;
 
 int objcmain(int argc, char *argv[])
 {
-    int result = 0;
     if (argc < 4) {
         @throw [TTestException exceptionWithMessage: @"Need test base dir, data dir and package"];
     }
@@ -644,6 +641,7 @@ int objcmain(int argc, char *argv[])
             [testClasses setObject: class forKey: [class className]];
         }
     }
+    int statistics[3] = {0, 0, 0};
     for (id <TIterator> i = [[[testClasses allKeys] sortedArrayUsing:
             @selector(caseInsensitiveCompare:)] iterator]; [i hasCurrent]; [i next]) {
         Class testClass = [testClasses objectForKey: [i current]];
@@ -665,7 +663,7 @@ int objcmain(int argc, char *argv[])
                         } else {
                             [test perform: [TUtils selectorFromString: @"initFor:"] with: class];
                         }
-                        result += [test run: methodFilter for: class];
+                        [test run: methodFilter for: class statistics: statistics];
                     } @finally {
                         [test release];
                     }
@@ -675,11 +673,15 @@ int objcmain(int argc, char *argv[])
             TTestCase *test = nil;
             @try {
                 test = [[testClass alloc] init];
-                result += [test run: methodFilter for: Nil];
+                [test run: methodFilter for: Nil statistics: statistics];
             } @finally {
                 [test release];
             }
         }
     }
-    return result;
+    [TUserIO eprintln: @"%d suite%s, %d test%s, %d failure%s",
+            statistics[0], statistics[0] != 1 ? "s" : "",
+            statistics[1], statistics[1] != 1 ? "s" : "",
+            statistics[2], statistics[2] != 1 ? "s" : ""];
+    return statistics[2];
 }
